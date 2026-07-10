@@ -5,9 +5,6 @@
     <div class="note-list-header" :class="{ inset: !sidebarVisible }">
       <h2>{{ folderTitle }}</h2>
       <div class="header-actions">
-        <button class="icon-btn" title="Ordina e filtra" @click="sortMenu.toggle($event)">
-          <Icon icon="lucide:arrow-up-down" />
-        </button>
         <button
           v-if="!store.isTrashView"
           class="icon-btn"
@@ -40,6 +37,15 @@
       <Icon icon="lucide:search" />
       <input ref="searchInput" v-model="store.searchQuery" type="text" placeholder="Cerca" />
     </div>
+
+    <button class="sort-bar" title="Ordina e filtra" @click="sortMenu.toggle($event)">
+      <Icon :icon="settings.sortDir === 'asc' ? 'lucide:arrow-up-narrow-wide' : 'lucide:arrow-down-wide-narrow'" />
+      <span class="sort-current">{{ sortLabel }}</span>
+      <span v-if="settings.pinnedOnly" class="sort-filter">
+        <Icon icon="lucide:star" /> preferiti
+      </span>
+      <Icon icon="lucide:chevron-down" class="sort-chevron" />
+    </button>
 
     <div class="note-items">
       <div v-if="store.visibleNotes.length === 0" class="empty-state">
@@ -95,19 +101,18 @@
         <div class="menu-title">Ordina per</div>
       </template>
       <template #item="{ item, props }">
-        <a class="menu-row" v-bind="props.action">
+        <a
+          class="menu-row"
+          :class="{ active: item.sortKey && settings.sortKey === item.sortKey }"
+          v-bind="props.action"
+        >
           <Icon :icon="item.icon" />
           <span class="grow">{{ item.label }}</span>
-          <Icon
-            v-if="item.sortKey && settings.sortKey === item.sortKey"
-            :icon="settings.sortDir === 'asc' ? 'lucide:arrow-up' : 'lucide:arrow-down'"
-            class="trail"
-          />
-          <Icon
-            v-else-if="item.filter && settings.pinnedOnly"
-            icon="lucide:check"
-            class="trail"
-          />
+          <span v-if="item.sortKey && settings.sortKey === item.sortKey" class="sort-state">
+            <Icon :icon="settings.sortDir === 'asc' ? 'lucide:arrow-up' : 'lucide:arrow-down'" />
+            {{ settings.sortDir === 'asc' ? 'crescente' : 'decrescente' }}
+          </span>
+          <Icon v-else-if="item.filter && settings.pinnedOnly" icon="lucide:check" class="trail" />
         </a>
       </template>
     </Menu>
@@ -148,6 +153,13 @@ const folderTitle = computed(() => {
   if (store.isTrashView) return 'Cestino'
   return store.currentFolder?.name || 'Note'
 })
+
+const SORT_LABELS = {
+  updated: 'Data modifica',
+  created: 'Data creazione',
+  title: 'Titolo'
+}
+const sortLabel = computed(() => SORT_LABELS[settings.sortKey] || 'Data modifica')
 
 const noteMenuItems = computed(() => {
   const note = menuTargetNote.value
@@ -334,6 +346,44 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   color: var(--p-text-color);
 }
 
+.sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 10px 6px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--p-text-muted-color);
+  font-size: 12px;
+  cursor: pointer;
+  width: calc(100% - 20px);
+}
+.sort-bar:hover {
+  background: var(--sidebar-hover-bg);
+}
+.sort-bar :deep(svg) {
+  font-size: 14px;
+}
+.sort-current {
+  color: var(--p-text-color);
+  font-weight: 500;
+}
+.sort-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--p-text-color);
+}
+.sort-filter :deep(svg) {
+  font-size: 11px;
+}
+.sort-chevron {
+  margin-left: auto;
+  opacity: 0.7;
+}
+
 .note-items {
   flex: 1;
   overflow-y: auto;
@@ -451,6 +501,24 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
 .menu-row svg {
   font-size: 15px;
   color: var(--icon-color);
+}
+.menu-row.active {
+  color: var(--p-text-color);
+  font-weight: 600;
+}
+.menu-row.active :deep(svg) {
+  color: var(--p-text-color);
+}
+.sort-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--p-text-muted-color);
+}
+.sort-state :deep(svg) {
+  font-size: 13px;
 }
 .menu-row .trail {
   font-size: 13px;
