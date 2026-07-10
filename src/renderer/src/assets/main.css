@@ -21,6 +21,17 @@
   --cm-quote: #6e6e6e;
   --cm-meta: #9a9a9a;
   --cm-selection: rgba(0, 0, 0, 0.12);
+
+  /* syntax highlighting codice (blocchi con linguaggio) */
+  --cm-text: #1a1a1a;
+  --cm-keyword: #7b2fb0;
+  --cm-string: #237a3f;
+  --cm-number: #b35b00;
+  --cm-comment: #8a8a8a;
+  --cm-function: #2b5fb8;
+  --cm-type: #8a6d00;
+  --cm-property: #333333;
+  --cm-punct: #666666;
 }
 
 .dark-mode {
@@ -40,8 +51,18 @@
   --cm-link: #7ab0e6;
   --cm-code: #f08bc0;
   --cm-quote: #9a9a9a;
-  --cm-meta: #6e6e6e;
+  --cm-meta: #7d7d7d;
   --cm-selection: rgba(255, 255, 255, 0.16);
+
+  --cm-text: #e8e8e8;
+  --cm-keyword: #c99bec;
+  --cm-string: #8fce9b;
+  --cm-number: #e6a86b;
+  --cm-comment: #7d7d7d;
+  --cm-function: #84b6f0;
+  --cm-type: #e6d08a;
+  --cm-property: #cfcfcf;
+  --cm-punct: #9a9a9a;
 }
 
 /* Aura in dark usa zinc (leggermente freddo) per dialoghi/menu:

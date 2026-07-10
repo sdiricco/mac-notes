@@ -24,15 +24,45 @@ let syncing = false // true mentre aggiorniamo il doc dall'esterno (niente emit)
 // I colori usano CSS variables: il tema chiaro/scuro è gestito interamente dal CSS,
 // senza dover riconfigurare l'editor quando cambia il tema.
 const highlightStyle = HighlightStyle.define([
-  { tag: [t.heading, t.heading1, t.heading2, t.heading3], color: 'var(--cm-heading)', fontWeight: '700' },
+  // --- markdown (prosa) ---
+  {
+    tag: [t.heading, t.heading1, t.heading2, t.heading3, t.heading4, t.heading5, t.heading6],
+    color: 'var(--cm-heading)',
+    fontWeight: '700'
+  },
   { tag: t.strong, color: 'var(--cm-strong)', fontWeight: '700' },
   { tag: t.emphasis, fontStyle: 'italic' },
   { tag: t.strikethrough, textDecoration: 'line-through' },
   { tag: [t.link, t.url], color: 'var(--cm-link)' },
   { tag: t.monospace, color: 'var(--cm-code)' },
   { tag: t.quote, color: 'var(--cm-quote)', fontStyle: 'italic' },
-  { tag: [t.list, t.processingInstruction], color: 'var(--cm-meta)' },
-  { tag: [t.meta, t.contentSeparator], color: 'var(--cm-meta)' }
+  // marcatori (# * - > ` ecc.): tenui — NON il testo della lista (tags.list),
+  // che resta col colore di testo normale ed è quindi leggibile
+  { tag: [t.processingInstruction, t.meta, t.contentSeparator], color: 'var(--cm-meta)' },
+
+  // --- codice nei blocchi con linguaggio (js, ecc.) ---
+  {
+    tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.definitionKeyword, t.operatorKeyword],
+    color: 'var(--cm-keyword)'
+  },
+  { tag: [t.string, t.special(t.string), t.regexp], color: 'var(--cm-string)' },
+  { tag: [t.number, t.bool, t.null, t.atom], color: 'var(--cm-number)' },
+  {
+    tag: [t.comment, t.lineComment, t.blockComment],
+    color: 'var(--cm-comment)',
+    fontStyle: 'italic'
+  },
+  {
+    tag: [t.function(t.variableName), t.function(t.propertyName), t.labelName],
+    color: 'var(--cm-function)'
+  },
+  { tag: [t.typeName, t.className, t.namespace], color: 'var(--cm-type)' },
+  { tag: t.propertyName, color: 'var(--cm-property)' },
+  {
+    tag: [t.operator, t.punctuation, t.separator, t.bracket, t.paren, t.brace, t.squareBracket],
+    color: 'var(--cm-punct)'
+  },
+  { tag: [t.variableName, t.definition(t.variableName)], color: 'var(--cm-text)' }
 ])
 
 const theme = EditorView.theme({
