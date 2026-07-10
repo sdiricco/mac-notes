@@ -7,6 +7,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Quill from 'quill'
+import hljs from 'highlight.js/lib/common'
 import 'quill/dist/quill.snow.css'
 
 const props = defineProps({
@@ -28,20 +29,67 @@ const toolbarOptions = [
   ['clean']
 ]
 
+// chiavi = nomi canonici di highlight.js (coerenti con normalizeLang in markdown.js)
+const CODE_LANGUAGES = [
+  { key: 'plain', label: 'Testo' },
+  { key: 'javascript', label: 'JavaScript' },
+  { key: 'typescript', label: 'TypeScript' },
+  { key: 'python', label: 'Python' },
+  { key: 'bash', label: 'Bash' },
+  { key: 'json', label: 'JSON' },
+  { key: 'yaml', label: 'YAML' },
+  { key: 'xml', label: 'HTML/XML' },
+  { key: 'css', label: 'CSS' },
+  { key: 'scss', label: 'SCSS' },
+  { key: 'java', label: 'Java' },
+  { key: 'csharp', label: 'C#' },
+  { key: 'cpp', label: 'C++' },
+  { key: 'c', label: 'C' },
+  { key: 'go', label: 'Go' },
+  { key: 'rust', label: 'Rust' },
+  { key: 'ruby', label: 'Ruby' },
+  { key: 'php', label: 'PHP' },
+  { key: 'sql', label: 'SQL' },
+  { key: 'markdown', label: 'Markdown' }
+]
+
 function loadContent(html) {
   internalUpdate = true
   quill.setContents([])
   if (html) {
     quill.clipboard.dangerouslyPasteHTML(html)
+    applyCodeLanguages(html)
   }
   internalUpdate = false
+}
+
+// Quill in fase di paste non preserva l'attributo data-language dei blocchi di
+// codice (li imposta a "plain"): lo riapplichiamo via API leggendolo dal sorgente,
+// così il modulo Syntax + highlight.js può evidenziarli.
+function applyCodeLanguages(html) {
+  const source = new DOMParser().parseFromString(html, 'text/html')
+  const langs = [...source.querySelectorAll('.ql-code-block-container')].map((c) => {
+    const line = c.querySelector('.ql-code-block[data-language]')
+    return line ? line.getAttribute('data-language') : 'plain'
+  })
+  if (!langs.length) return
+  const containers = quill.root.querySelectorAll('.ql-code-block-container')
+  containers.forEach((dom, i) => {
+    const lang = langs[i]
+    if (!lang || lang === 'plain') return
+    const blot = Quill.find(dom)
+    if (!blot) return
+    quill.formatLine(quill.getIndex(blot), blot.length(), 'code-block', lang, 'silent')
+  })
+  quill.getModule('syntax')?.highlight?.()
 }
 
 onMounted(() => {
   quill = new Quill(editorEl.value, {
     theme: 'snow',
     modules: {
-      toolbar: toolbarOptions
+      toolbar: toolbarOptions,
+      syntax: { hljs, languages: CODE_LANGUAGES }
     }
   })
 
@@ -210,6 +258,58 @@ onBeforeUnmount(() => {
   color: var(--p-text-color);
   border-radius: 8px;
   padding: 10px 14px;
+}
+
+/* syntax highlighting dei blocchi di codice (modulo Syntax di Quill + highlight.js),
+   mappato sulle stesse CSS variables del raw editor per coerenza chiaro/scuro */
+.quill-editor :deep(.ql-code-block-container .hljs-keyword),
+.quill-editor :deep(.ql-code-block-container .hljs-selector-tag),
+.quill-editor :deep(.ql-code-block-container .hljs-built_in),
+.quill-editor :deep(.ql-code-block-container .hljs-meta .hljs-keyword) {
+  color: var(--cm-keyword);
+}
+.quill-editor :deep(.ql-code-block-container .hljs-string),
+.quill-editor :deep(.ql-code-block-container .hljs-regexp),
+.quill-editor :deep(.ql-code-block-container .hljs-template-string),
+.quill-editor :deep(.ql-code-block-container .hljs-symbol) {
+  color: var(--cm-string);
+}
+.quill-editor :deep(.ql-code-block-container .hljs-number),
+.quill-editor :deep(.ql-code-block-container .hljs-literal) {
+  color: var(--cm-number);
+}
+.quill-editor :deep(.ql-code-block-container .hljs-comment),
+.quill-editor :deep(.ql-code-block-container .hljs-quote) {
+  color: var(--cm-comment);
+  font-style: italic;
+}
+.quill-editor :deep(.ql-code-block-container .hljs-title),
+.quill-editor :deep(.ql-code-block-container .hljs-title.function_),
+.quill-editor :deep(.ql-code-block-container .hljs-section) {
+  color: var(--cm-function);
+}
+.quill-editor :deep(.ql-code-block-container .hljs-type),
+.quill-editor :deep(.ql-code-block-container .hljs-title.class_),
+.quill-editor :deep(.ql-code-block-container .hljs-class .hljs-title) {
+  color: var(--cm-type);
+}
+.quill-editor :deep(.ql-code-block-container .hljs-attr),
+.quill-editor :deep(.ql-code-block-container .hljs-attribute),
+.quill-editor :deep(.ql-code-block-container .hljs-property) {
+  color: var(--cm-property);
+}
+.quill-editor :deep(.ql-code-block-container .hljs-variable),
+.quill-editor :deep(.ql-code-block-container .hljs-params) {
+  color: var(--cm-text);
+}
+.quill-editor :deep(.ql-code-block-container .hljs-punctuation),
+.quill-editor :deep(.ql-code-block-container .hljs-operator) {
+  color: var(--cm-punct);
+}
+/* selettore lingua che il modulo aggiunge a ogni blocco */
+.quill-editor :deep(.ql-code-block-container .ql-ui) {
+  color: var(--p-text-muted-color);
+  right: 6px;
 }
 
 /* Quill Snow usa #06c hardcoded su stati attivi/espansi: forziamo il neutro */

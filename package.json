@@ -30,6 +30,7 @@
     "@vueuse/core": "^11.3.0",
     "codemirror": "^6.0.2",
     "electron-updater": "^6.3.9",
+    "highlight.js": "^11.11.1",
     "marked": "^15.0.4",
     "pinia": "^2.3.0",
     "primeicons": "^7.0.0",
