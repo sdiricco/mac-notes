@@ -5,11 +5,53 @@
   "main": "./out/main/index.js",
   "author": "Simone Di Ricco",
   "private": true,
+  "build": {
+    "appId": "com.movesolutions.macnotes",
+    "productName": "Mac Notes",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "darkModeSupport": true,
+      "identity": null
+    },
+    "dmg": {
+      "title": "${productName}"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility",
+      "icon": "build/icon.png",
+      "maintainer": "Simone Di Ricco <simone.diricco@movesolutions.it>"
+    }
+  },
   "scripts": {
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "start": "electron-vite preview",
+    "icon": "node scripts/make-icon.mjs",
+    "pack": "electron-vite build && electron-builder --dir",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:win": "electron-vite build && electron-builder --win",
     "build:linux": "electron-vite build && electron-builder --linux"
@@ -45,6 +87,7 @@
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
+    "sharp": "^0.35.3",
     "vite": "^5.4.11"
   }
 }

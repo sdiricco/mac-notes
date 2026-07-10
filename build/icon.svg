@@ -1,0 +1,31 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a3a3c"/>
+      <stop offset="1" stop-color="#151517"/>
+    </linearGradient>
+    <linearGradient id="sheet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#ededed"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#000000" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <!-- sfondo squircle graphite -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect x="5" y="5" width="1014" height="1014" rx="223" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
+
+  <!-- foglio -->
+  <g filter="url(#shadow)">
+    <rect x="288" y="232" width="448" height="560" rx="46" fill="url(#sheet)"/>
+  </g>
+
+  <!-- righe di testo (titolo scuro in grassetto + corpo grigio) -->
+  <rect x="356" y="332" width="312" height="38" rx="19" fill="#3a3a3c"/>
+  <rect x="356" y="430" width="312" height="26" rx="13" fill="#cdced3"/>
+  <rect x="356" y="494" width="312" height="26" rx="13" fill="#cdced3"/>
+  <rect x="356" y="558" width="312" height="26" rx="13" fill="#cdced3"/>
+  <rect x="356" y="622" width="212" height="26" rx="13" fill="#cdced3"/>
+</svg>
