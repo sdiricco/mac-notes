@@ -66,8 +66,31 @@ turndownService.addRule('quillUi', {
   replacement: () => ''
 })
 
+// Spazio unificatore (U+00A0): non viene collassato da HTML/Quill/Markdown.
+const NBSP = String.fromCharCode(0xa0)
+const TAB_AS_NBSP = NBSP.repeat(4) // un TAB nel testo = 4 spazi unificatori nell'anteprima
+const SENT = String.fromCharCode(0) // sentinella per proteggere i blocchi fenced
+
+// Un TAB nel testo normale verrebbe collassato: lo converto in spazi unificatori
+// così l'indentazione resta visibile nell'anteprima. I blocchi fenced ``` vengono
+// protetti (lì i tab restano tab veri, gestiti come codice).
+function tabsToNbsp(markdown) {
+  const fences = []
+  const guarded = markdown.replace(/```[\s\S]*?(?:```|$)/g, (m) => {
+    fences.push(m)
+    return `${SENT}${fences.length - 1}${SENT}`
+  })
+  const converted = guarded.replace(/\t/g, TAB_AS_NBSP)
+  return converted.replace(new RegExp(`${SENT}(\\d+)${SENT}`, 'g'), (_m, i) => fences[Number(i)])
+}
+
+// Rovescio della conversione: gruppi di 4 nbsp → TAB, nbsp isolati → spazio normale.
+function nbspToTabs(markdown) {
+  return markdown.replace(new RegExp(`${NBSP}{4}`, 'g'), '\t').replace(new RegExp(NBSP, 'g'), ' ')
+}
+
 export function markdownToHtml(markdown) {
-  let html = marked.parse(markdown || '')
+  let html = marked.parse(tabsToNbsp(markdown || ''))
   // le task list di marked (<input type="checkbox">) diventano checklist native di Quill
   html = html.replace(/<li>\s*<input([^>]*type="checkbox"[^>]*)>\s*/g, (_m, attrs) => {
     const state = /\bchecked\b/.test(attrs) ? 'checked' : 'unchecked'
@@ -106,7 +129,7 @@ export function htmlToMarkdown(html) {
     pre.appendChild(code)
     cont.replaceWith(pre)
   })
-  return turndownService.turndown(doc.body.innerHTML)
+  return nbspToTabs(turndownService.turndown(doc.body.innerHTML))
 }
 
 export function stripHtml(html) {

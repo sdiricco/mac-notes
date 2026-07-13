@@ -9,7 +9,7 @@ import { EditorView, keymap } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
-import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { syntaxHighlighting, HighlightStyle, indentUnit } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
 import { useSettingsStore } from '../stores/settings'
 
@@ -102,6 +102,8 @@ onMounted(() => {
     doc: props.modelValue,
     extensions: [
       history(),
+      indentUnit.of('\t'),
+      EditorState.tabSize.of(4),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       syntaxHighlighting(highlightStyle),
