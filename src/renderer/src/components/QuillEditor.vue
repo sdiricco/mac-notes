@@ -87,12 +87,33 @@ function applyCodeLanguages(html) {
   quill.getModule('syntax')?.highlight?.()
 }
 
+// Scorciatoie di formattazione (in aggiunta a ⌘B/⌘I/⌘U nativi di Quill).
+// Uso i keyCode numerici: shift+numero/lettera cambia evt.key a seconda del layout,
+// mentre il keyCode resta stabile.
+const toggle = (quill, range, name, value, current) =>
+  quill.format(name, current === value ? false : value, 'user')
+
+const editorBindings = {
+  strike: { key: 88, shortKey: true, shiftKey: true, handler(r, c) { toggle(this.quill, r, 'strike', true, c.format.strike); return false } },
+  h1: { key: 49, shortKey: true, altKey: true, handler(r, c) { toggle(this.quill, r, 'header', 1, c.format.header); return false } },
+  h2: { key: 50, shortKey: true, altKey: true, handler(r, c) { toggle(this.quill, r, 'header', 2, c.format.header); return false } },
+  h3: { key: 51, shortKey: true, altKey: true, handler(r, c) { toggle(this.quill, r, 'header', 3, c.format.header); return false } },
+  normal: { key: 48, shortKey: true, altKey: true, handler() { this.quill.format('header', false, 'user'); return false } },
+  orderedList: { key: 55, shortKey: true, shiftKey: true, handler(r, c) { toggle(this.quill, r, 'list', 'ordered', c.format.list); return false } },
+  bulletList: { key: 56, shortKey: true, shiftKey: true, handler(r, c) { toggle(this.quill, r, 'list', 'bullet', c.format.list); return false } },
+  checkList: { key: 57, shortKey: true, shiftKey: true, handler(r, c) { const on = c.format.list === 'checked' || c.format.list === 'unchecked'; this.quill.format('list', on ? false : 'unchecked', 'user'); return false } },
+  blockquote: { key: 66, shortKey: true, shiftKey: true, handler(r, c) { this.quill.format('blockquote', !c.format.blockquote, 'user'); return false } },
+  codeBlock: { key: 67, shortKey: true, shiftKey: true, handler(r, c) { this.quill.format('code-block', !c.format['code-block'], 'user'); return false } },
+  link: { key: 75, shortKey: true, handler(r) { if (r && r.length > 0) { const url = window.prompt('Indirizzo del link'); if (url) this.quill.format('link', url, 'user') } return false } }
+}
+
 onMounted(() => {
   quill = new Quill(editorEl.value, {
     theme: 'snow',
     modules: {
       toolbar: toolbarOptions,
-      syntax: { hljs, languages: CODE_LANGUAGES }
+      syntax: { hljs, languages: CODE_LANGUAGES },
+      keyboard: { bindings: editorBindings }
     }
   })
 
