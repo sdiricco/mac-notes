@@ -1,6 +1,6 @@
 {
   "name": "mac-notes",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A Mac Notes-like Electron app with Markdown import/export",
   "main": "./out/main/index.js",
   "author": "Simone Di Ricco",
