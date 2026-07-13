@@ -1,6 +1,6 @@
 {
   "name": "mac-notes",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A Mac Notes-like Electron app with Markdown import/export",
   "main": "./out/main/index.js",
   "author": "Simone Di Ricco",
@@ -8,6 +8,11 @@
   "build": {
     "appId": "com.movesolutions.macnotes",
     "productName": "Mac Notes",
+    "publish": {
+      "provider": "github",
+      "owner": "sdiricco",
+      "repo": "mac-notes"
+    },
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -54,7 +59,8 @@
     "pack": "electron-vite build && electron-builder --dir",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:win": "electron-vite build && electron-builder --win",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "release": "electron-vite build && electron-builder --publish always"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",
