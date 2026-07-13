@@ -20,6 +20,18 @@
         </div>
         <button
           class="icon-btn"
+          :class="{ on: settings.spellcheck }"
+          :title="
+            settings.spellcheck
+              ? `Correzione ortografica attiva (${settings.spellLang.toUpperCase()})`
+              : 'Attiva correzione ortografica'
+          "
+          @click="settings.toggleSpellcheck()"
+        >
+          <Icon icon="lucide:spell-check" />
+        </button>
+        <button
+          class="icon-btn"
           :title="store.selectedNote.pinned ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'"
           @click="store.togglePin(store.selectedNote.id)"
         >
@@ -74,12 +86,14 @@ import { computed, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { Icon } from '@iconify/vue'
 import { useNotesStore } from '../stores/notes'
+import { useSettingsStore } from '../stores/settings'
 import QuillEditor from './QuillEditor.vue'
 import MarkdownSourceEditor from './MarkdownSourceEditor.vue'
 import { htmlToMarkdown, markdownToHtml } from '../utils/markdown'
 import { debounce } from '../utils/debounce'
 
 const store = useNotesStore()
+const settings = useSettingsStore()
 const toast = useToast()
 
 const mode = ref('rich')
@@ -200,6 +214,10 @@ function fullDate(timestamp) {
 }
 .icon-btn:hover {
   background: var(--sidebar-hover-bg);
+  color: var(--p-text-color);
+}
+.icon-btn.on {
+  background: var(--selection-bg);
   color: var(--p-text-color);
 }
 .icon-btn :deep(svg.filled) {

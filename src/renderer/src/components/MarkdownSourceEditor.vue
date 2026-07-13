@@ -4,22 +4,32 @@
 
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { EditorState } from '@codemirror/state'
+import { EditorState, Compartment } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
+import { useSettingsStore } from '../stores/settings'
 
 const props = defineProps({
   modelValue: { type: String, default: '' }
 })
 const emit = defineEmits(['update:modelValue'])
 
+const settings = useSettingsStore()
 const host = ref(null)
 let view = null
 let syncing = false // true mentre aggiorniamo il doc dall'esterno (niente emit)
+const spellComp = new Compartment()
+
+function spellcheckAttrs() {
+  return EditorView.contentAttributes.of({
+    spellcheck: settings.spellcheck ? 'true' : 'false',
+    lang: settings.spellcheck ? settings.spellLang : ''
+  })
+}
 
 // I colori usano CSS variables: il tema chiaro/scuro è gestito interamente dal CSS,
 // senza dover riconfigurare l'editor quando cambia il tema.
@@ -92,10 +102,11 @@ onMounted(() => {
     doc: props.modelValue,
     extensions: [
       history(),
-      keymap.of([...defaultKeymap, ...historyKeymap]),
+      keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       syntaxHighlighting(highlightStyle),
       EditorView.lineWrapping,
+      spellComp.of(spellcheckAttrs()),
       theme,
       EditorView.updateListener.of((update) => {
         if (update.docChanged && !syncing) {
@@ -106,6 +117,12 @@ onMounted(() => {
   })
   view = new EditorView({ state, parent: host.value })
 })
+
+// Applica la correzione ortografica in modo reattivo
+watch(
+  () => [settings.spellcheck, settings.spellLang],
+  () => view?.dispatch({ effects: spellComp.reconfigure(spellcheckAttrs()) })
+)
 
 // Sincronizza il doc quando il valore cambia dall'esterno (es. cambio nota)
 watch(

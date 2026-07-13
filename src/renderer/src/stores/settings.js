@@ -24,6 +24,8 @@ export const useSettingsStore = defineStore('settings', {
     sortKey: 'updated', // 'updated' | 'created' | 'title'
     sortDir: 'desc', // 'asc' | 'desc'
     pinnedOnly: false,
+    spellcheck: false, // correzione ortografica disattivata di default
+    spellLang: 'it', // lingua della correzione quando attiva
     ...loadSaved()
   }),
 
@@ -64,6 +66,17 @@ export const useSettingsStore = defineStore('settings', {
       this.save()
     },
 
+    toggleSpellcheck() {
+      this.spellcheck = !this.spellcheck
+      this.save()
+    },
+
+    setSpellLang(lang) {
+      this.spellLang = lang
+      if (!this.spellcheck) this.spellcheck = true
+      this.save()
+    },
+
     save() {
       localStorage.setItem(
         KEY,
@@ -71,7 +84,9 @@ export const useSettingsStore = defineStore('settings', {
           theme: this.theme,
           sortKey: this.sortKey,
           sortDir: this.sortDir,
-          pinnedOnly: this.pinnedOnly
+          pinnedOnly: this.pinnedOnly,
+          spellcheck: this.spellcheck,
+          spellLang: this.spellLang
         })
       )
     }

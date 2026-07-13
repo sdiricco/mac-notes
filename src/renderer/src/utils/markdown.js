@@ -60,20 +60,6 @@ turndownService.addRule('quillListItem', {
   }
 })
 
-// I blocchi di codice di Quill sono <div class="ql-code-block">, non <pre>
-turndownService.addRule('quillCodeBlock', {
-  filter: (node) =>
-    node.nodeName === 'DIV' && node.classList?.contains('ql-code-block-container'),
-  replacement: (_content, node) => {
-    const blocks = Array.from(node.querySelectorAll('.ql-code-block'))
-    const lang = blocks[0]?.getAttribute('data-language')
-    const fence = lang && lang !== 'plain' ? lang : ''
-    const lines = blocks.map((d) => d.textContent)
-    while (lines.length && lines[lines.length - 1].trim() === '') lines.pop()
-    return '\n```' + fence + '\n' + lines.join('\n') + '\n```\n\n'
-  }
-})
-
 // Elementi di UI interni a Quill (frecce delle checklist ecc.)
 turndownService.addRule('quillUi', {
   filter: (node) => node.nodeName === 'SPAN' && node.classList?.contains('ql-ui'),
@@ -105,7 +91,22 @@ export function markdownToHtml(markdown) {
 }
 
 export function htmlToMarkdown(html) {
-  return turndownService.turndown(html || '')
+  // Converto i blocchi di codice di Quill (<div class="ql-code-block">) in <pre><code>
+  // prima di turndown: turndown collassa gli spazi negli elementi non-<pre>, mentre
+  // dentro <pre> li preserva. Così tab e indentazione del codice sopravvivono al roundtrip.
+  const doc = new DOMParser().parseFromString(html || '', 'text/html')
+  doc.querySelectorAll('.ql-code-block-container').forEach((cont) => {
+    const blocks = [...cont.querySelectorAll('.ql-code-block')]
+    if (!blocks.length) return
+    const lang = blocks[0].getAttribute('data-language')
+    const pre = doc.createElement('pre')
+    const code = doc.createElement('code')
+    if (lang && lang !== 'plain') code.className = `language-${lang}`
+    code.textContent = blocks.map((b) => b.textContent).join('\n')
+    pre.appendChild(code)
+    cont.replaceWith(pre)
+  })
+  return turndownService.turndown(doc.body.innerHTML)
 }
 
 export function stripHtml(html) {

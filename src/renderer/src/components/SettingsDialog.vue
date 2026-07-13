@@ -36,6 +36,28 @@
     </div>
 
     <div class="settings-section">
+      <div class="settings-label">Correzione ortografica</div>
+      <div class="settings-row">
+        <label class="settings-desc">
+          <input type="checkbox" :checked="settings.spellcheck" @change="settings.toggleSpellcheck()" />
+          Abilita
+        </label>
+        <select
+          :value="settings.spellLang"
+          class="settings-select"
+          :disabled="!settings.spellcheck"
+          @change="settings.setSpellLang($event.target.value)"
+        >
+          <option value="it">Italiano</option>
+          <option value="en">English</option>
+          <option value="es">Español</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <button class="link-btn" @click="openShortcuts">
         <Icon icon="lucide:keyboard" />
         <span>Scorciatoie da tastiera</span>
@@ -120,6 +142,15 @@ function openShortcuts() {
 .settings-desc {
   font-size: 13px;
   color: var(--p-text-color);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.settings-desc input[type='checkbox'] {
+  accent-color: var(--p-text-color);
+}
+.settings-select:disabled {
+  opacity: 0.45;
 }
 .settings-select {
   background: var(--search-bg);

@@ -9,6 +9,9 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Quill from 'quill'
 import hljs from 'highlight.js/lib/common'
 import 'quill/dist/quill.snow.css'
+import { useSettingsStore } from '../stores/settings'
+
+const settings = useSettingsStore()
 
 const props = defineProps({
   noteId: { type: String, default: null },
@@ -94,6 +97,7 @@ onMounted(() => {
   })
 
   loadContent(props.content)
+  applySpellcheck()
 
   quill.on('text-change', (_delta, _oldDelta, source) => {
     // solo modifiche dell'utente: il load e la normalizzazione interna non vanno salvati
@@ -101,6 +105,15 @@ onMounted(() => {
     emit('change', quill.root.innerHTML === '<p><br></p>' ? '' : quill.root.innerHTML)
   })
 })
+
+function applySpellcheck() {
+  if (!quill) return
+  quill.root.setAttribute('spellcheck', settings.spellcheck ? 'true' : 'false')
+  if (settings.spellcheck) quill.root.setAttribute('lang', settings.spellLang)
+  else quill.root.removeAttribute('lang')
+}
+
+watch(() => [settings.spellcheck, settings.spellLang], applySpellcheck)
 
 watch(
   () => props.noteId,
