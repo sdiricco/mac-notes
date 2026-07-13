@@ -9,7 +9,13 @@
 
     <template v-else>
       <div class="editor-topbar">
-        <span class="folder-crumb">{{ folderName }}</span>
+        <input
+          :key="store.selectedNote.id + '-title'"
+          class="title-input"
+          :value="store.selectedNote.title"
+          placeholder="Titolo"
+          @input="onTitleInput"
+        />
         <div class="mode-toggle">
           <button :class="{ active: mode === 'rich' }" title="Anteprima formattata" @click="setMode('rich')">
             <Icon icon="lucide:eye" />
@@ -53,15 +59,6 @@
         </button>
       </div>
 
-      <input
-        :key="store.selectedNote.id + '-title'"
-        class="title-input"
-        :value="store.selectedNote.title"
-        placeholder="Titolo"
-        @input="onTitleInput"
-      />
-      <div class="editor-date">{{ fullDate(store.selectedNote.updatedAt) }}</div>
-
       <QuillEditor
         v-if="mode === 'rich'"
         :key="store.selectedNote.id"
@@ -82,7 +79,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { Icon } from '@iconify/vue'
 import { useNotesStore } from '../stores/notes'
@@ -129,12 +126,6 @@ watch(
   }
 )
 
-const folderName = computed(() => {
-  const note = store.selectedNote
-  if (!note) return ''
-  return store.folders.find((f) => f.id === note.folderId)?.name || ''
-})
-
 function onTitleInput(event) {
   store.updateNote(store.selectedNote.id, { title: event.target.value })
 }
@@ -146,16 +137,6 @@ function onContentChange(html) {
 async function copyNote() {
   await navigator.clipboard.writeText(htmlToMarkdown(store.selectedNote.content))
   toast.add({ severity: 'success', summary: 'Copiato come Markdown', life: 1800 })
-}
-
-function fullDate(timestamp) {
-  return new Date(timestamp).toLocaleString('it-IT', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 </script>
 
@@ -189,15 +170,14 @@ function fullDate(timestamp) {
 .editor-topbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 20px 4px;
+  gap: 6px;
+  padding: 8px 16px;
   -webkit-app-region: drag;
-}
-
-.folder-crumb {
-  flex: 1;
-  font-size: 12px;
-  color: var(--p-text-muted-color);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--editor-bg);
+  border-bottom: 1px solid var(--p-content-border-color);
 }
 
 .icon-btn {
@@ -226,19 +206,20 @@ function fullDate(timestamp) {
 }
 
 .title-input {
+  flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
-  font-size: 24px;
-  font-weight: 700;
-  padding: 4px 24px 0;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--p-text-color);
+  -webkit-app-region: no-drag;
+  text-overflow: ellipsis;
 }
-
-.editor-date {
-  padding: 0 24px 8px;
-  font-size: 12px;
+.title-input::placeholder {
   color: var(--p-text-muted-color);
+  font-weight: 400;
 }
 
 .editor-body {
