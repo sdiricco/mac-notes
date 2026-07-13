@@ -2,6 +2,11 @@ name: Release
 
 # Ogni tag "vX.Y.Z" builda l'app su mac/win/linux e pubblica una release GitHub
 # con gli artefatti (dmg/zip, nsis, AppImage/deb). Vedi package.json > build.publish.
+#
+# macOS ha un job per architettura (arm64/x64): costruire due DMG in sequenza
+# sullo stesso runner causa "hdiutil detach" flakiness (l'immagine disco del
+# primo DMG non si smonta in tempo prima che parta il secondo), che fa fallire
+# electron-builder anche dopo aver già caricato quasi tutti gli asset.
 on:
   push:
     tags:
@@ -11,11 +16,33 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  release-mac:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        arch: [arm64, x64]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build e pubblica (mac ${{ matrix.arch }})
+        run: npx electron-vite build && npx electron-builder --mac --${{ matrix.arch }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-other:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
