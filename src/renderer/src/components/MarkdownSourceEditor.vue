@@ -102,8 +102,13 @@ onMounted(() => {
     doc: props.modelValue,
     extensions: [
       history(),
-      indentUnit.of('\t'),
-      EditorState.tabSize.of(4),
+      // Tab inserisce 2 spazi letterali (non un carattere TAB): evita del tutto
+      // l'ambiguità dei tab-stop (un TAB "vale" larghezze diverse a seconda della
+      // colonna in cui cade) e rende la larghezza dell'indentazione identica,
+      // carattere per carattere, tra raw e anteprima (vedi TAB_SIZE in markdown.js,
+      // che deve restare allineato a questo valore per un eventuale TAB incollato).
+      indentUnit.of('  '),
+      EditorState.tabSize.of(2),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       syntaxHighlighting(highlightStyle),

@@ -93,18 +93,46 @@ const BLOCKQUOTE_RE = /^\s*>/
 const HEADING_RE = /^\s*#{1,6}\s/
 const isStructuralLine = (line) => LIST_RE.test(line) || BLOCKQUOTE_RE.test(line) || HEADING_RE.test(line)
 
-function expandToNbsp(whitespace) {
-  let out = ''
-  for (const ch of whitespace) out += ch === '\t' ? NBSP.repeat(4) : NBSP
-  return out
-}
+// Deve combaciare col tabSize impostato in CodeMirror (MarkdownSourceEditor.vue):
+// un TAB non è largo "N spazi fissi" ma avanza fino al prossimo multiplo di
+// TAB_SIZE colonne, quindi il suo spazio effettivo dipende da dove si trova
+// nella riga (esattamente come lo mostra il raw editor). In raw il tasto Tab
+// inserisce 2 spazi letterali (non un carattere TAB), quindi qui serve solo
+// per un eventuale TAB reale incollato da fuori.
+const TAB_SIZE = 2
 
-// Un run di 2+ spazi (o qualunque tab) in mezzo a una riga non ha mai significato
-// sintattico in Markdown: lo preserviamo sempre. Il primo spazio resta normale
-// (permette comunque l'a-capo automatico), il resto diventa spazio unificatore.
-function expandInlineRun(run) {
-  if (run.includes('\t')) return expandToNbsp(run)
-  return ' ' + NBSP.repeat(run.length - 1)
+// Trasforma la spaziatura "decorativa" di una riga (non strutturale) preservando
+// la semantica dei tab-stop: la colonna corrente viene tracciata carattere per
+// carattere così un TAB a metà riga si espande solo fino al prossimo tab-stop,
+// non sempre a 4 spazi fissi.
+function expandLineWhitespace(text, startCol) {
+  let out = ''
+  let col = startCol
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === '\t') {
+      const width = TAB_SIZE - (col % TAB_SIZE)
+      out += NBSP.repeat(width)
+      col += width
+    } else if (ch === ' ') {
+      let j = i
+      while (j < text.length && text[j] === ' ') j++
+      const runLen = j - i
+      // Un singolo spazio resta normale (permette l'a-capo). Un run di 2+ va
+      // preservato PER INTERO come spazio unificatore: se anche un solo carattere
+      // del run restasse uno spazio normale, quel carattere renderebbe nel font
+      // proporzionale del testo (più stretto) invece che nel monospace applicato
+      // dopo (vedi wrapNbspInMonospace), rompendo la corrispondenza di larghezza
+      // col raw anche per un run di sole 2 spazi.
+      out += runLen >= 2 ? NBSP.repeat(runLen) : ' '
+      col += runLen
+      i = j - 1
+    } else {
+      out += ch
+      col += 1
+    }
+  }
+  return out
 }
 
 // Preserva la spaziatura "decorativa" (indentazione di paragrafi non in lista,
@@ -123,8 +151,14 @@ function preserveWhitespace(markdown) {
     const leadMatch = line.match(/^[ \t]+/)
     const lead = leadMatch ? leadMatch[0] : ''
     const rest = line.slice(lead.length)
-    const newLead = lead && !isStructuralLine(line) ? expandToNbsp(lead) : lead
-    const newRest = rest.replace(/\t+| {2,}/g, expandInlineRun)
+    const structural = isStructuralLine(line)
+
+    // Riga strutturale: il lead resta intatto per il parser; la colonna di
+    // partenza per il resto della riga è comunque la sua lunghezza (i tab nel
+    // lead di una riga strutturale sono un caso raro, non ottimizzato qui).
+    const newLead = !structural && lead ? expandLineWhitespace(lead, 0) : lead
+    const startCol = structural ? lead.length : newLead.length
+    const newRest = expandLineWhitespace(rest, startCol)
     return newLead + newRest
   })
 
@@ -138,8 +172,23 @@ function nbspToPlain(markdown) {
   return markdown.replace(new RegExp(NBSP, 'g'), ' ')
 }
 
+// Avvolge i run di spazio unificatore in uno span monospace, per far coincidere
+// la larghezza visiva dell'indentazione con quella del raw (CodeMirror è monospace,
+// mentre il testo normale in anteprima usa un font proporzionale: a parità di
+// caratteri il TAB "varrebbe" una larghezza diversa tra le due modalità).
+// Nota: il valore DEVE essere letteralmente "monospace" (o "serif") — il format
+// 'font' di Quill ha una whitelist fissa e scarta in paste qualunque altro valore
+// di font-family, incluso uno stack tipo "'SF Mono', ui-monospace, …".
+function wrapNbspInMonospace(html) {
+  return html.replace(
+    new RegExp(`${NBSP}+`, 'g'),
+    (run) => `<span style="font-family: monospace">${run}</span>`
+  )
+}
+
 export function markdownToHtml(markdown) {
   let html = marked.parse(preserveWhitespace(markdown || ''))
+  html = wrapNbspInMonospace(html)
   // le task list di marked (<input type="checkbox">) diventano checklist native di Quill
   html = html.replace(/<li>\s*<input([^>]*type="checkbox"[^>]*)>\s*/g, (_m, attrs) => {
     const state = /\bchecked\b/.test(attrs) ? 'checked' : 'unchecked'

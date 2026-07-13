@@ -269,6 +269,15 @@ onBeforeUnmount(() => {
   padding: 1px 5px;
 }
 
+/* Spazio unificatore usato per preservare TAB/indentazione nel testo (vedi
+   wrapNbspInMonospace in utils/markdown.js): stessa famiglia e dimensione del
+   raw editor (MarkdownSourceEditor.vue), così un TAB occupa la stessa larghezza
+   in anteprima e in raw invece di "valere" un numero di spazi diverso. */
+.quill-editor :deep(.ql-editor .ql-font-monospace) {
+  font-family: 'SF Mono', ui-monospace, Menlo, Monaco, monospace;
+  font-size: 13px;
+}
+
 .quill-editor :deep(.ql-editor .ql-code-block-container) {
   background: var(--search-bg);
   color: var(--p-text-color);
