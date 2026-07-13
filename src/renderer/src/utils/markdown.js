@@ -60,76 +60,104 @@ turndownService.addRule('quillListItem', {
   }
 })
 
-// Elementi di UI interni a Quill (frecce delle checklist ecc.)
+// Il formato nativo di Quill per un blocco di codice (con il modulo Syntax attivo)
+// è <pre data-language="xx">codice</pre>: turndown per default lo tratterebbe come
+// <pre> generico (fence senza linguaggio), quindi leggiamo noi l'attributo.
+turndownService.addRule('quillCodeBlock', {
+  filter: (node) => node.nodeName === 'PRE',
+  replacement: (_content, node) => {
+    const lang = node.getAttribute('data-language')
+    const fence = lang && lang !== 'plain' ? lang : ''
+    const code = node.textContent.replace(/^\n/, '').replace(/\n$/, '')
+    return '\n```' + fence + '\n' + code + '\n```\n\n'
+  }
+})
+
+// Elementi di UI interni a Quill (frecce delle checklist, selettore lingua ecc.)
 turndownService.addRule('quillUi', {
   filter: (node) => node.nodeName === 'SPAN' && node.classList?.contains('ql-ui'),
   replacement: () => ''
 })
 
-// Spazio unificatore (U+00A0): non viene collassato da HTML/Quill/Markdown.
+// Spazio unificatore (U+00A0): non viene collassato da HTML/browser, e i parser
+// Markdown non lo trattano come lo spazio ASCII che innesca liste annidate o
+// blocchi di codice indentati.
 const NBSP = String.fromCharCode(0xa0)
-const TAB_AS_NBSP = NBSP.repeat(4) // un TAB nel testo = 4 spazi unificatori nell'anteprima
 const SENT = String.fromCharCode(0) // sentinella per proteggere i blocchi fenced
 
-// Un TAB nel testo normale verrebbe collassato: lo converto in spazi unificatori
-// così l'indentazione resta visibile nell'anteprima. I blocchi fenced ``` vengono
-// protetti (lì i tab restano tab veri, gestiti come codice).
-function tabsToNbsp(markdown) {
+// Una riga è "strutturale" se la sua indentazione ha un significato per il parser
+// Markdown (elenco, citazione, titolo): in questi casi lo spazio iniziale NON va
+// toccato, altrimenti si rompe il riconoscimento di liste annidate ecc.
+const LIST_RE = /^\s*([-*+]|\d+[.)])\s/
+const BLOCKQUOTE_RE = /^\s*>/
+const HEADING_RE = /^\s*#{1,6}\s/
+const isStructuralLine = (line) => LIST_RE.test(line) || BLOCKQUOTE_RE.test(line) || HEADING_RE.test(line)
+
+function expandToNbsp(whitespace) {
+  let out = ''
+  for (const ch of whitespace) out += ch === '\t' ? NBSP.repeat(4) : NBSP
+  return out
+}
+
+// Un run di 2+ spazi (o qualunque tab) in mezzo a una riga non ha mai significato
+// sintattico in Markdown: lo preserviamo sempre. Il primo spazio resta normale
+// (permette comunque l'a-capo automatico), il resto diventa spazio unificatore.
+function expandInlineRun(run) {
+  if (run.includes('\t')) return expandToNbsp(run)
+  return ' ' + NBSP.repeat(run.length - 1)
+}
+
+// Preserva la spaziatura "decorativa" (indentazione di paragrafi non in lista,
+// allineamenti con più spazi) che altrimenti l'HTML collasserebbe o che innescherebbe
+// la regola Markdown "4 spazi = blocco di codice". Non tocca l'indentazione di righe
+// strutturali (liste, citazioni, titoli) per non comprometterne il parsing, né i
+// blocchi fenced ```…``` (protetti a parte, dove la spaziatura serve al codice).
+function preserveWhitespace(markdown) {
   const fences = []
   const guarded = markdown.replace(/```[\s\S]*?(?:```|$)/g, (m) => {
     fences.push(m)
     return `${SENT}${fences.length - 1}${SENT}`
   })
-  const converted = guarded.replace(/\t/g, TAB_AS_NBSP)
-  return converted.replace(new RegExp(`${SENT}(\\d+)${SENT}`, 'g'), (_m, i) => fences[Number(i)])
+
+  const lines = guarded.split('\n').map((line) => {
+    const leadMatch = line.match(/^[ \t]+/)
+    const lead = leadMatch ? leadMatch[0] : ''
+    const rest = line.slice(lead.length)
+    const newLead = lead && !isStructuralLine(line) ? expandToNbsp(lead) : lead
+    const newRest = rest.replace(/\t+| {2,}/g, expandInlineRun)
+    return newLead + newRest
+  })
+
+  return lines.join('\n').replace(new RegExp(`${SENT}(\\d+)${SENT}`, 'g'), (_m, i) => fences[Number(i)])
 }
 
-// Rovescio della conversione: gruppi di 4 nbsp → TAB, nbsp isolati → spazio normale.
-function nbspToTabs(markdown) {
-  return markdown.replace(new RegExp(`${NBSP}{4}`, 'g'), '\t').replace(new RegExp(NBSP, 'g'), ' ')
+// Al ritorno da HTML, ogni NBSP diventa uno spazio normale: non proviamo a
+// distinguere se in origine fosse un TAB o più spazi, ci basta che la spaziatura
+// visiva non collassi più.
+function nbspToPlain(markdown) {
+  return markdown.replace(new RegExp(NBSP, 'g'), ' ')
 }
 
 export function markdownToHtml(markdown) {
-  let html = marked.parse(tabsToNbsp(markdown || ''))
+  let html = marked.parse(preserveWhitespace(markdown || ''))
   // le task list di marked (<input type="checkbox">) diventano checklist native di Quill
   html = html.replace(/<li>\s*<input([^>]*type="checkbox"[^>]*)>\s*/g, (_m, attrs) => {
     const state = /\bchecked\b/.test(attrs) ? 'checked' : 'unchecked'
     return `<li data-list="${state}">`
   })
-  // blocchi di codice di marked (<pre><code class="language-xx">) → formato nativo Quill
-  // (.ql-code-block-container con data-language) così Quill+highlight.js li evidenzia
+  // blocchi di codice di marked (<pre><code class="language-xx">) → formato nativo
+  // di Quill col modulo Syntax attivo: <pre data-language="xx">, che il paste di
+  // Quill riconosce da solo (matchCodeBlock legge data-language dal <pre>) e
+  // colora subito con highlight.js, senza bisogno di post-processing via API.
   html = html.replace(
     /<pre><code(?:\s+class="language-([^"]*)")?>([\s\S]*?)<\/code><\/pre>\s*/g,
-    (_m, lang, code) => {
-      const language = normalizeLang(lang)
-      const body = code.replace(/\n$/, '')
-      const lines = body.length ? body.split('\n') : ['']
-      const inner = lines
-        .map((l) => `<div class="ql-code-block" data-language="${language}">${l}</div>`)
-        .join('')
-      return `<div class="ql-code-block-container" spellcheck="false">${inner}</div>`
-    }
+    (_m, lang, code) => `<pre data-language="${normalizeLang(lang)}">\n${code.replace(/\n$/, '')}\n</pre>`
   )
   return html
 }
 
 export function htmlToMarkdown(html) {
-  // Converto i blocchi di codice di Quill (<div class="ql-code-block">) in <pre><code>
-  // prima di turndown: turndown collassa gli spazi negli elementi non-<pre>, mentre
-  // dentro <pre> li preserva. Così tab e indentazione del codice sopravvivono al roundtrip.
-  const doc = new DOMParser().parseFromString(html || '', 'text/html')
-  doc.querySelectorAll('.ql-code-block-container').forEach((cont) => {
-    const blocks = [...cont.querySelectorAll('.ql-code-block')]
-    if (!blocks.length) return
-    const lang = blocks[0].getAttribute('data-language')
-    const pre = doc.createElement('pre')
-    const code = doc.createElement('code')
-    if (lang && lang !== 'plain') code.className = `language-${lang}`
-    code.textContent = blocks.map((b) => b.textContent).join('\n')
-    pre.appendChild(code)
-    cont.replaceWith(pre)
-  })
-  return nbspToTabs(turndownService.turndown(doc.body.innerHTML))
+  return nbspToPlain(turndownService.turndown(html || ''))
 }
 
 export function stripHtml(html) {

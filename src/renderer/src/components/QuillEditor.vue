@@ -59,32 +59,10 @@ const CODE_LANGUAGES = [
 function loadContent(html) {
   internalUpdate = true
   quill.setContents([])
-  if (html) {
-    quill.clipboard.dangerouslyPasteHTML(html)
-    applyCodeLanguages(html)
-  }
+  // Il paste di Quill (con modulo Syntax attivo) legge da solo data-language dal
+  // <pre> e applica l'evidenziazione: nessun post-processing manuale necessario.
+  if (html) quill.clipboard.dangerouslyPasteHTML(html)
   internalUpdate = false
-}
-
-// Quill in fase di paste non preserva l'attributo data-language dei blocchi di
-// codice (li imposta a "plain"): lo riapplichiamo via API leggendolo dal sorgente,
-// così il modulo Syntax + highlight.js può evidenziarli.
-function applyCodeLanguages(html) {
-  const source = new DOMParser().parseFromString(html, 'text/html')
-  const langs = [...source.querySelectorAll('.ql-code-block-container')].map((c) => {
-    const line = c.querySelector('.ql-code-block[data-language]')
-    return line ? line.getAttribute('data-language') : 'plain'
-  })
-  if (!langs.length) return
-  const containers = quill.root.querySelectorAll('.ql-code-block-container')
-  containers.forEach((dom, i) => {
-    const lang = langs[i]
-    if (!lang || lang === 'plain') return
-    const blot = Quill.find(dom)
-    if (!blot) return
-    quill.formatLine(quill.getIndex(blot), blot.length(), 'code-block', lang, 'silent')
-  })
-  quill.getModule('syntax')?.highlight?.()
 }
 
 // Scorciatoie di formattazione (in aggiunta a ⌘B/⌘I/⌘U nativi di Quill).
@@ -123,7 +101,11 @@ onMounted(() => {
   quill.on('text-change', (_delta, _oldDelta, source) => {
     // solo modifiche dell'utente: il load e la normalizzazione interna non vanno salvati
     if (internalUpdate || source !== 'user') return
-    emit('change', quill.root.innerHTML === '<p><br></p>' ? '' : quill.root.innerHTML)
+    // getSemanticHTML() serializza dal modello Delta, escludendo gli elementi UI
+    // iniettati nel DOM (es. il <select> lingua dei code block): quill.root.innerHTML
+    // includerebbe quel <select>, facendolo finire salvato nel contenuto della nota.
+    const html = quill.getSemanticHTML()
+    emit('change', html === '<p><br></p>' ? '' : html)
   })
 })
 
