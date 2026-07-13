@@ -171,13 +171,15 @@ function openShortcuts() {
   color: var(--p-text-color);
   cursor: pointer;
   font-size: 13px;
-  padding: 6px 0;
+  padding: 6px 10px;
+  margin: 0 -10px;
+  border-radius: 7px;
 }
 .link-btn :deep(svg) {
   font-size: 17px;
   color: var(--icon-color);
 }
 .link-btn:hover {
-  color: var(--p-primary-color);
+  background: var(--sidebar-hover-bg);
 }
 </style>
