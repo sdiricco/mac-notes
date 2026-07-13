@@ -331,10 +331,37 @@ onBeforeUnmount(() => {
 .quill-editor :deep(.ql-code-block-container .hljs-operator) {
   color: var(--cm-punct);
 }
-/* selettore lingua che il modulo aggiunge a ogni blocco */
+/* Selettore lingua che il modulo Syntax aggiunge a ogni blocco: è un <select>
+   nativo, qui spogliato del chrome di sistema (appearance:none + freccia SVG
+   propria) per farlo somigliare a un chip dell'app invece che a un controllo
+   del sistema operativo. */
 .quill-editor :deep(.ql-code-block-container .ql-ui) {
-  color: var(--p-text-muted-color);
+  top: 6px;
   right: 6px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239a9a9a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  background-size: 11px;
+  color: var(--p-text-muted-color);
+  font-size: 12px;
+  font-family: inherit;
+  border-radius: 6px;
+  padding: 3px 20px 3px 6px;
+  cursor: pointer;
+}
+.quill-editor :deep(.ql-code-block-container .ql-ui:hover) {
+  color: var(--p-text-color);
+}
+.quill-editor :deep(.ql-code-block-container .ql-ui:focus) {
+  outline: none;
+}
+.quill-editor :deep(.ql-code-block-container .ql-ui option) {
+  background: var(--card-bg);
+  color: var(--p-text-color);
 }
 
 /* Quill Snow usa #06c hardcoded su stati attivi/espansi: forziamo il neutro */

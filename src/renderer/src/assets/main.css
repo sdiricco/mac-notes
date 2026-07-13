@@ -74,6 +74,34 @@
   border-color: #383838;
 }
 
+/* PrimeVue imposta i suoi popup (Menu, ContextMenu) al font-size di default del
+   tema (1rem = 16px), mentre il resto dell'app usa 12-15px: senza questo, le
+   voci di menu risultano visibilmente più grandi del resto della UI. */
+.p-menu,
+.p-contextmenu {
+  font-size: 13px;
+}
+.p-menu .p-menu-item-label,
+.p-contextmenu .p-contextmenu-item-label {
+  font-size: 13px;
+}
+
+/* Menu più compatti: il padding di default di PrimeVue (8px 12px per voce) è
+   pensato per un font-size più grande e risulta troppo spazioso qui. */
+.p-menu .p-menu-list,
+.p-contextmenu .p-contextmenu-root-list {
+  padding: 3px;
+  gap: 1px;
+}
+.p-menu .p-menu-item-link,
+.p-contextmenu .p-contextmenu-item-link {
+  padding: 5px 9px;
+  gap: 7px;
+}
+.p-menu .p-menu-separator {
+  margin: 3px 0;
+}
+
 * {
   box-sizing: border-box;
 }
