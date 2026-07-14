@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { loadData, saveData } from './store'
 import { buildMenu } from './menu'
+import { initUpdateCheck } from './updateCheck'
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -30,6 +31,7 @@ function createWindow() {
   })
 
   buildMenu(mainWindow)
+  initUpdateCheck(mainWindow)
 
   if (is.dev) {
     mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {

@@ -44,16 +44,19 @@ import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import { useNotesStore } from './stores/notes'
 import { useSettingsStore } from './stores/settings'
 import { useUiStore } from './stores/ui'
+import { useUpdateCheckStore } from './stores/updateCheck'
 import { api } from './utils/api'
 
 const store = useNotesStore()
 const settings = useSettingsStore()
 const ui = useUiStore()
+const updateCheck = useUpdateCheckStore()
 const noteListRef = ref(null)
 const unsubscribers = []
 
 onMounted(async () => {
   settings.init()
+  updateCheck.init()
   await store.init()
 
   unsubscribers.push(

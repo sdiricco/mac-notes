@@ -18,6 +18,13 @@ const api = {
     const listener = () => callback()
     ipcRenderer.on(channel, listener)
     return () => ipcRenderer.removeListener(channel, listener)
+  },
+  checkForUpdates: () => ipcRenderer.invoke('update-check:run'),
+  getAppVersion: () => ipcRenderer.invoke('update-check:app-version'),
+  onUpdateCheckStatus: (callback) => {
+    const listener = (_event, status) => callback(status)
+    ipcRenderer.on('update-check:status', listener)
+    return () => ipcRenderer.removeListener('update-check:status', listener)
   }
 }
 

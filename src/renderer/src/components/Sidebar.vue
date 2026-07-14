@@ -2,6 +2,15 @@
   <aside class="sidebar">
     <div class="sidebar-topbar">
       <div class="drag-spacer"></div>
+      <button
+        v-if="updateCheck.available"
+        class="update-btn"
+        :title="`Versione ${updateCheck.latestVersion} disponibile (attuale: ${updateCheck.currentVersion})`"
+        @click="onUpdateClick"
+      >
+        <Icon icon="lucide:arrow-up-circle" />
+        <span>Aggiorna</span>
+      </button>
       <button class="icon-btn" title="Impostazioni" @click="ui.openSettings()">
         <Icon icon="lucide:settings" />
       </button>
@@ -92,15 +101,40 @@
 import { nextTick, ref } from 'vue'
 import ContextMenu from 'primevue/contextmenu'
 import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
 import { Icon } from '@iconify/vue'
 import { useNotesStore } from '../stores/notes'
 import { useUiStore } from '../stores/ui'
+import { useUpdateCheckStore } from '../stores/updateCheck'
 
 const emit = defineEmits(['toggle-sidebar'])
 
 const store = useNotesStore()
 const ui = useUiStore()
+const updateCheck = useUpdateCheckStore()
 const confirm = useConfirm()
+const toast = useToast()
+
+const UPDATE_CMD = 'brew upgrade --cask mac-notes'
+
+async function onUpdateClick() {
+  try {
+    await navigator.clipboard.writeText(UPDATE_CMD)
+    toast.add({
+      severity: 'info',
+      summary: `Versione ${updateCheck.latestVersion} disponibile`,
+      detail: `Comando copiato: ${UPDATE_CMD}`,
+      life: 4000
+    })
+  } catch {
+    toast.add({
+      severity: 'info',
+      summary: `Versione ${updateCheck.latestVersion} disponibile`,
+      detail: `Esegui: ${UPDATE_CMD}`,
+      life: 5000
+    })
+  }
+}
 
 const renamingId = ref(null)
 const renameValue = ref('')
@@ -194,6 +228,27 @@ function removeFolder(folder) {
 }
 .sidebar-topbar .icon-btn {
   -webkit-app-region: no-drag;
+}
+
+.update-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: var(--selection-bg);
+  color: var(--p-text-color);
+  cursor: pointer;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  -webkit-app-region: no-drag;
+}
+.update-btn:hover {
+  background: var(--sidebar-hover-bg);
+}
+.update-btn :deep(svg) {
+  font-size: 14px;
 }
 
 .sidebar-section {

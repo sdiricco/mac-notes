@@ -30,6 +30,14 @@ const browserApi = {
 
   onMenu() {
     return () => {}
+  },
+
+  async checkForUpdates() {},
+  async getAppVersion() {
+    return 'dev'
+  },
+  onUpdateCheckStatus() {
+    return () => {}
   }
 }
 
