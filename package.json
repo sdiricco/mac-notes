@@ -11,7 +11,8 @@
     "publish": {
       "provider": "github",
       "owner": "sdiricco",
-      "repo": "mac-notes"
+      "repo": "mac-notes",
+      "releaseType": "release"
     },
     "directories": {
       "output": "release",
