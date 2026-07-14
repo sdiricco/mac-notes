@@ -63,17 +63,39 @@
         <span>Scorciatoie da tastiera</span>
       </button>
     </div>
+
+    <div class="settings-section">
+      <div class="settings-label">Informazioni</div>
+      <div class="settings-row">
+        <span class="settings-desc">Versione {{ updateCheck.currentVersion || '—' }}</span>
+        <button class="check-update-btn" :disabled="updateCheck.checking" @click="onCheckUpdates">
+          <Icon :icon="updateCheck.checking ? 'lucide:loader-circle' : 'lucide:refresh-cw'" :class="{ spin: updateCheck.checking }" />
+          <span>{{ updateCheck.checking ? 'Verifica…' : 'Controlla aggiornamenti' }}</span>
+        </button>
+      </div>
+      <div v-if="hasChecked && !updateCheck.checking" class="update-status" :class="{ available: updateCheck.available }">
+        <Icon :icon="updateCheck.available ? 'lucide:arrow-up-circle' : 'lucide:check-circle'" />
+        <span v-if="updateCheck.available">
+          Versione {{ updateCheck.latestVersion }} disponibile — esegui <code>brew upgrade --cask mac-notes</code>
+        </span>
+        <span v-else>Hai già la versione più recente</span>
+      </div>
+    </div>
   </Dialog>
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import Dialog from 'primevue/dialog'
 import { Icon } from '@iconify/vue'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
+import { useUpdateCheckStore } from '../stores/updateCheck'
 
 const settings = useSettingsStore()
 const ui = useUiStore()
+const updateCheck = useUpdateCheckStore()
+const hasChecked = ref(false)
 
 const themeOptions = [
   { value: 'system', label: 'Sistema', icon: 'lucide:monitor' },
@@ -84,6 +106,11 @@ const themeOptions = [
 function openShortcuts() {
   ui.settingsOpen = false
   ui.openShortcuts()
+}
+
+async function onCheckUpdates() {
+  await updateCheck.check()
+  hasChecked.value = true
 }
 </script>
 
@@ -181,5 +208,65 @@ function openShortcuts() {
 }
 .link-btn:hover {
   background: var(--sidebar-hover-bg);
+}
+
+.check-update-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--p-content-border-color);
+  background: transparent;
+  color: var(--p-text-color);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 7px;
+}
+.check-update-btn:hover {
+  background: var(--sidebar-hover-bg);
+}
+.check-update-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.check-update-btn :deep(svg) {
+  font-size: 13px;
+}
+
+.update-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--search-bg);
+  color: var(--p-text-muted-color);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.update-status.available {
+  color: var(--p-text-color);
+}
+.update-status :deep(svg) {
+  flex-shrink: 0;
+  font-size: 15px;
+}
+.update-status.available :deep(svg) {
+  color: #3b82f6;
+}
+.update-status code {
+  background: var(--editor-bg);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+}
+.check-update-btn :deep(svg.spin) {
+  animation: settings-spin 1s linear infinite;
+}
+@keyframes settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

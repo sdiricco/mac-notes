@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { loadData, saveData } from './store'
 import { buildMenu } from './menu'
 import { initUpdateCheck } from './updateCheck'
+import { initFileTransfer } from './fileTransfer'
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -32,6 +33,7 @@ function createWindow() {
 
   buildMenu(mainWindow)
   initUpdateCheck(mainWindow)
+  initFileTransfer(mainWindow)
 
   if (is.dev) {
     mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {

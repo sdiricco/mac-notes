@@ -1,11 +1,26 @@
 <template>
   <div class="quill-editor">
     <div ref="editorEl"></div>
+    <div
+      v-if="tableMenu.visible"
+      ref="tableMenuEl"
+      class="table-context-menu"
+      :style="{ left: tableMenu.x + 'px', top: tableMenu.y + 'px' }"
+    >
+      <button
+        v-for="action in TABLE_ACTIONS"
+        :key="action.value"
+        :class="{ danger: action.value.startsWith('delete') }"
+        @click="runTableAction(action.value)"
+      >
+        {{ action.label }}
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import Quill from 'quill'
 import hljs from 'highlight.js/lib/common'
 import 'quill/dist/quill.snow.css'
@@ -15,7 +30,11 @@ const settings = useSettingsStore()
 
 const props = defineProps({
   noteId: { type: String, default: null },
-  content: { type: String, default: '' }
+  content: { type: String, default: '' },
+  // Contenitore DOM esterno (rif. da NoteEditor.vue) dove montare la toolbar
+  // di formattazione, così può stare visivamente sopra ai pulsanti azione
+  // invece che nella posizione dove Quill la inserirebbe di default.
+  toolbarContainer: { type: Object, default: null }
 })
 
 const emit = defineEmits(['change'])
@@ -24,13 +43,71 @@ const editorEl = ref(null)
 let quill = null
 let internalUpdate = false
 
+// Azioni sulla tabella (righe/colonne): esposte tramite menu contestuale al
+// tasto destro su una cella (vedi openTableMenu), non nella toolbar.
+const TABLE_ACTIONS = [
+  { value: 'insertRowAbove', label: 'Inserisci riga sopra' },
+  { value: 'insertRowBelow', label: 'Inserisci riga sotto' },
+  { value: 'insertColumnLeft', label: 'Inserisci colonna a sinistra' },
+  { value: 'insertColumnRight', label: 'Inserisci colonna a destra' },
+  { value: 'deleteRow', label: 'Elimina riga' },
+  { value: 'deleteColumn', label: 'Elimina colonna' },
+  { value: 'deleteTable', label: 'Elimina tabella' }
+]
+
 const toolbarOptions = [
   [{ header: [1, 2, 3, false] }],
   ['bold', 'italic', 'underline', 'strike'],
-  [{ list: 'ordered' }, { list: 'bullet' }, { list: 'check' }],
+  [{ color: [] }, { background: [] }],
+  [{ list: ['ordered', 'bullet', 'unchecked', false] }],
   ['blockquote', 'code-block', 'link'],
+  ['table'],
   ['clean']
 ]
+
+// Markup equivalente a toolbarOptions, per quando la toolbar vive in un
+// contenitore esterno: Quill non genera l'HTML in quel caso (lo fa solo per
+// un array passato come modules.toolbar), ma la sua theme "snow" continua a
+// riconoscere queste classi e ad aggiungere le icone automaticamente.
+const TOOLBAR_HTML = `
+  <span class="ql-formats">
+    <select class="ql-header">
+      <option value="1"></option>
+      <option value="2"></option>
+      <option value="3"></option>
+      <option selected></option>
+    </select>
+  </span>
+  <span class="ql-formats">
+    <button class="ql-bold" type="button"></button>
+    <button class="ql-italic" type="button"></button>
+    <button class="ql-underline" type="button"></button>
+    <button class="ql-strike" type="button"></button>
+  </span>
+  <span class="ql-formats">
+    <select class="ql-color"></select>
+    <select class="ql-background"></select>
+  </span>
+  <span class="ql-formats">
+    <select class="ql-list">
+      <option value="ordered"></option>
+      <option value="bullet"></option>
+      <option value="unchecked"></option>
+      <option selected></option>
+    </select>
+  </span>
+  <span class="ql-formats">
+    <button class="ql-blockquote" type="button"></button>
+    <button class="ql-code-block" type="button"></button>
+    <button class="ql-link" type="button"></button>
+  </span>
+  <span class="ql-formats">
+    <button class="ql-table" type="button"></button>
+  </span>
+  <span class="ql-formats">
+    <button class="ql-clean" type="button"></button>
+  </span>
+`
 
 // chiavi = nomi canonici di highlight.js (coerenti con normalizeLang in markdown.js)
 const CODE_LANGUAGES = [
@@ -85,11 +162,70 @@ const editorBindings = {
   link: { key: 75, shortKey: true, handler(r) { if (r && r.length > 0) { const url = window.prompt('Indirizzo del link'); if (url) this.quill.format('link', url, 'user') } return false } }
 }
 
-onMounted(() => {
+// Il bottone tabella non corrisponde a un toggle di formattazione: inserisce
+// una tabella 2x2 alla posizione del cursore tramite il modulo Table di Quill.
+function insertTable() {
+  this.quill.getModule('table')?.insertTable(2, 2)
+}
+
+// Righe/colonne: menu contestuale al tasto destro su una cella. Le API del
+// modulo Table agiscono sulla cella/tabella dove si trova il cursore, che il
+// browser posiziona già correttamente al mousedown del tasto destro (prima
+// che l'evento 'contextmenu' arrivi), quindi non serve impostarla a mano.
+const tableMenuEl = ref(null)
+const tableMenu = reactive({ visible: false, x: 0, y: 0 })
+
+async function openTableMenu(event) {
+  if (!event.target.closest('td') || !quill.getModule('table')) return
+  event.preventDefault()
+  tableMenu.x = event.clientX
+  tableMenu.y = event.clientY
+  tableMenu.visible = true
+  // il menu può uscire dal viewport se il click è vicino al bordo destro/basso
+  // della finestra: lo si riposiziona solo dopo che è nel DOM (serve la sua misura reale).
+  await nextTick()
+  const rect = tableMenuEl.value?.getBoundingClientRect()
+  if (!rect) return
+  const margin = 8
+  if (rect.right > window.innerWidth - margin) tableMenu.x -= rect.right - (window.innerWidth - margin)
+  if (rect.bottom > window.innerHeight - margin) tableMenu.y -= rect.bottom - (window.innerHeight - margin)
+}
+
+function closeTableMenu() {
+  tableMenu.visible = false
+}
+
+function runTableAction(value) {
+  quill.getModule('table')?.[value]?.()
+  closeTableMenu()
+}
+
+function onGlobalMousedown(event) {
+  if (tableMenu.visible && !tableMenuEl.value?.contains(event.target)) {
+    closeTableMenu()
+  }
+}
+
+onMounted(async () => {
+  // Al primissimo mount della vista, il ref del contenitore esterno (passato
+  // dal genitore) può risultare ancora null qui: viene assegnato durante il
+  // mount dell'elemento fratello nella STESSA passata di render in cui questo
+  // componente calcola le sue props, quindi il valore "fresco" arriva un tick
+  // dopo. Aspettarlo evita di ricadere sulla toolbar generata da Quill nella
+  // sua posizione/stile di default.
+  await nextTick()
+
+  let toolbarContainer = toolbarOptions
+  if (props.toolbarContainer) {
+    props.toolbarContainer.innerHTML = TOOLBAR_HTML
+    toolbarContainer = props.toolbarContainer
+  }
+
   quill = new Quill(editorEl.value, {
     theme: 'snow',
     modules: {
-      toolbar: toolbarOptions,
+      toolbar: { container: toolbarContainer, handlers: { table: insertTable } },
+      table: true,
       syntax: { hljs, languages: CODE_LANGUAGES },
       keyboard: { bindings: editorBindings }
     }
@@ -97,6 +233,8 @@ onMounted(() => {
 
   loadContent(props.content)
   applySpellcheck()
+  quill.root.addEventListener('contextmenu', openTableMenu)
+  window.addEventListener('mousedown', onGlobalMousedown)
 
   quill.on('text-change', (_delta, _oldDelta, source) => {
     // solo modifiche dell'utente: il load e la normalizzazione interna non vanno salvati
@@ -133,6 +271,7 @@ function focusEditor() {
 defineExpose({ focusEditor })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('mousedown', onGlobalMousedown)
   quill = null
 })
 </script>
@@ -144,103 +283,44 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-/* ---- Toolbar: compatta e neutra ---- */
-.quill-editor :deep(.ql-toolbar) {
-  border: none;
-  border-bottom: 1px solid var(--p-content-border-color);
-  padding: 6px 16px;
+/* Menu contestuale righe/colonne: aperto al tasto destro su una cella (vedi
+   openTableMenu), posizionato al punto del click con position:fixed così le
+   coordinate client (event.clientX/Y) valgono senza calcoli di scroll. */
+.table-context-menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 190px;
   background: var(--editor-toolbar-bg);
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.quill-editor :deep(.ql-toolbar .ql-formats) {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-right: 10px;
-  padding-right: 10px;
-  border-right: 1px solid var(--p-content-border-color);
-}
-.quill-editor :deep(.ql-toolbar .ql-formats:last-child) {
-  border-right: none;
-  margin-right: 0;
-  padding-right: 0;
-}
-
-.quill-editor :deep(.ql-toolbar button) {
-  width: 26px;
-  height: 24px;
-  border-radius: 5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px;
-}
-.quill-editor :deep(.ql-toolbar button:hover),
-.quill-editor :deep(.ql-toolbar button.ql-active) {
-  background: var(--selection-bg);
-}
-
-/* Icone: sempre grigio neutro, testo pieno quando attive */
-.quill-editor :deep(.ql-snow .ql-stroke) {
-  stroke: var(--icon-color);
-}
-.quill-editor :deep(.ql-snow .ql-fill) {
-  fill: var(--icon-color);
-}
-.quill-editor :deep(.ql-toolbar button:hover .ql-stroke),
-.quill-editor :deep(.ql-toolbar button.ql-active .ql-stroke) {
-  stroke: var(--p-text-color);
-}
-.quill-editor :deep(.ql-toolbar button:hover .ql-fill),
-.quill-editor :deep(.ql-toolbar button.ql-active .ql-fill) {
-  fill: var(--p-text-color);
-}
-
-/* Dropdown dei titoli */
-.quill-editor :deep(.ql-toolbar .ql-picker) {
-  color: var(--icon-color);
-  font-size: 12px;
-  height: 24px;
-}
-.quill-editor :deep(.ql-toolbar .ql-picker-label) {
-  border: none;
-  border-radius: 5px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 20px 0 8px;
-}
-.quill-editor :deep(.ql-toolbar .ql-picker-label:hover),
-.quill-editor :deep(.ql-snow .ql-picker.ql-expanded .ql-picker-label) {
-  background: var(--selection-bg);
-  color: var(--p-text-color);
-}
-.quill-editor :deep(.ql-toolbar .ql-picker-label:hover .ql-stroke),
-.quill-editor :deep(.ql-snow .ql-picker.ql-expanded .ql-picker-label .ql-stroke) {
-  stroke: var(--p-text-color);
-}
-.quill-editor :deep(.ql-toolbar .ql-picker-options) {
-  background: var(--editor-bg);
-  border: 1px solid var(--p-content-border-color) !important;
+  border: 1px solid var(--p-content-border-color);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 4px;
-  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
 }
-.quill-editor :deep(.ql-toolbar .ql-picker-item) {
+.table-context-menu button {
+  border: none;
+  background: transparent;
+  color: var(--p-text-color);
+  text-align: left;
+  font-size: 13px;
+  padding: 6px 10px;
   border-radius: 5px;
-  padding: 3px 10px;
-  color: var(--p-text-color);
+  cursor: pointer;
 }
-.quill-editor :deep(.ql-toolbar .ql-picker-item:hover) {
+.table-context-menu button:hover {
   background: var(--selection-bg);
-  color: var(--p-text-color);
 }
-.quill-editor :deep(.ql-toolbar .ql-picker-item.ql-selected) {
-  color: var(--p-text-color);
-  font-weight: 600;
+.table-context-menu button.danger {
+  color: #e5484d;
+}
+.table-context-menu button.danger:hover {
+  background: rgba(229, 72, 77, 0.14);
+}
+.table-context-menu button.danger:first-of-type {
+  margin-top: 4px;
+  border-top: 1px solid var(--p-content-border-color);
+  padding-top: 8px;
 }
 
 .quill-editor :deep(.ql-container) {
@@ -269,10 +349,15 @@ onBeforeUnmount(() => {
   padding: 1px 5px;
 }
 
-/* Spazio unificatore usato per preservare TAB/indentazione nel testo (vedi
-   wrapNbspInMonospace in utils/markdown.js): stessa famiglia e dimensione del
-   raw editor (MarkdownSourceEditor.vue), così un TAB occupa la stessa larghezza
-   in anteprima e in raw invece di "valere" un numero di spazi diverso. */
+/* Il default di Quill usa un bordo #000 fisso: non va bene sul tema scuro */
+.quill-editor :deep(.ql-editor table td) {
+  border-color: var(--p-content-border-color);
+  min-width: 60px;
+}
+
+/* Spazio unificatore usato per preservare TAB/indentazione nel testo importato
+   da Markdown (vedi wrapNbspInMonospace in utils/markdown.js): va reso in un
+   font monospace altrimenti la sua larghezza varierebbe col font proporzionale. */
 .quill-editor :deep(.ql-editor .ql-font-monospace) {
   font-family: 'SF Mono', ui-monospace, Menlo, Monaco, monospace;
   font-size: 13px;
@@ -362,26 +447,5 @@ onBeforeUnmount(() => {
 .quill-editor :deep(.ql-code-block-container .ql-ui option) {
   background: var(--card-bg);
   color: var(--p-text-color);
-}
-
-/* Quill Snow usa #06c hardcoded su stati attivi/espansi: forziamo il neutro */
-.quill-editor :deep(.ql-snow .ql-toolbar button.ql-active),
-.quill-editor :deep(.ql-snow.ql-toolbar button.ql-active),
-.quill-editor :deep(.ql-snow .ql-picker-label.ql-active),
-.quill-editor :deep(.ql-snow .ql-picker.ql-expanded .ql-picker-label),
-.quill-editor :deep(.ql-snow .ql-picker-item.ql-selected),
-.quill-editor :deep(.ql-snow .ql-picker-item:hover) {
-  color: var(--p-text-color) !important;
-}
-.quill-editor :deep(.ql-snow .ql-toolbar button.ql-active .ql-stroke),
-.quill-editor :deep(.ql-snow.ql-toolbar button.ql-active .ql-stroke),
-.quill-editor :deep(.ql-snow .ql-picker-label.ql-active .ql-stroke),
-.quill-editor :deep(.ql-snow .ql-picker.ql-expanded .ql-picker-label .ql-stroke),
-.quill-editor :deep(.ql-snow .ql-picker-item:hover .ql-stroke) {
-  stroke: var(--p-text-color) !important;
-}
-.quill-editor :deep(.ql-snow .ql-toolbar button.ql-active .ql-fill),
-.quill-editor :deep(.ql-snow.ql-toolbar button.ql-active .ql-fill) {
-  fill: var(--p-text-color) !important;
 }
 </style>

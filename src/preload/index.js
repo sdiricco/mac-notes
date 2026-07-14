@@ -25,7 +25,10 @@ const api = {
     const listener = (_event, status) => callback(status)
     ipcRenderer.on('update-check:status', listener)
     return () => ipcRenderer.removeListener('update-check:status', listener)
-  }
+  },
+  exportMarkdown: (markdown, suggestedName) =>
+    ipcRenderer.invoke('note:export-md', { markdown, suggestedName }),
+  importMarkdown: () => ipcRenderer.invoke('note:import-md')
 }
 
 if (process.contextIsolated) {

@@ -23,8 +23,6 @@ function isNewer(a, b) {
 // di electron-updater fallirebbe su macOS senza un certificato Developer ID).
 // L'utente aggiorna da sé con "brew upgrade --cask mac-notes".
 export function initUpdateCheck(mainWindow) {
-  if (!app.isPackaged) return
-
   const currentVersion = app.getVersion()
 
   const send = (status) => {
@@ -49,8 +47,13 @@ export function initUpdateCheck(mainWindow) {
     }
   }
 
+  // I canali IPC restano attivi anche in dev/non-packaged (servono al pulsante
+  // manuale "Controlla aggiornamenti" e alla versione mostrata in Impostazioni);
+  // solo il controllo automatico periodico è limitato al build pacchettizzato.
   ipcMain.handle('update-check:run', check)
   ipcMain.handle('update-check:app-version', () => currentVersion)
+
+  if (!app.isPackaged) return
 
   setTimeout(check, 4000)
   setInterval(check, CHECK_INTERVAL_MS)

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { v4 as uuid } from 'uuid'
 import { debounce } from '../utils/debounce'
-import { stripHtml } from '../utils/markdown'
+import { stripHtml, extractTitleFromHtml } from '../utils/markdown'
 import { api } from '../utils/api'
 import { useSettingsStore } from './settings'
 
@@ -120,7 +120,11 @@ export const useNotesStore = defineStore('notes', {
     updateNote(id, patch) {
       const note = this.notes.find((n) => n.id === id)
       if (!note) return
-      Object.assign(note, patch, { updatedAt: Date.now() })
+      // Niente titolo digitato a mano: quando cambia il contenuto lo deduciamo
+      // dal primo h1/h2/h3 (vuoto se non c'è). Sovrascrive un'eventuale
+      // rinomina manuale precedente, per rispecchiare sempre il contenuto.
+      const finalPatch = 'content' in patch ? { ...patch, title: extractTitleFromHtml(patch.content) } : patch
+      Object.assign(note, finalPatch, { updatedAt: Date.now() })
       this.persist()
     },
 

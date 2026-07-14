@@ -73,6 +73,25 @@ turndownService.addRule('quillCodeBlock', {
   }
 })
 
+// Le tabelle di Quill non hanno <thead>/<th> (ogni cella è un <td>, anche
+// nella prima riga): la regola tabella di turndown-plugin-gfm richiede una
+// heading row di soli <th> per convertire, altrimenti lascia l'HTML grezzo
+// intatto (```<table>```). Costruiamo quindi noi il markdown, trattando
+// sempre la prima riga come intestazione.
+turndownService.addRule('quillTable', {
+  filter: (node) => node.nodeName === 'TABLE',
+  replacement: (_content, node) => {
+    const rows = Array.from(node.rows).map((row) =>
+      Array.from(row.cells).map((cell) => cell.textContent.trim().replace(/\|/g, '\\|') || ' ')
+    )
+    if (!rows.length) return ''
+    const toLine = (cells) => `| ${cells.join(' | ')} |`
+    const [header, ...body] = rows
+    const divider = toLine(header.map(() => '---'))
+    return '\n\n' + [toLine(header), divider, ...body.map(toLine)].join('\n') + '\n\n'
+  }
+})
+
 // Elementi di UI interni a Quill (frecce delle checklist, selettore lingua ecc.)
 turndownService.addRule('quillUi', {
   filter: (node) => node.nodeName === 'SPAN' && node.classList?.contains('ql-ui'),
@@ -93,12 +112,9 @@ const BLOCKQUOTE_RE = /^\s*>/
 const HEADING_RE = /^\s*#{1,6}\s/
 const isStructuralLine = (line) => LIST_RE.test(line) || BLOCKQUOTE_RE.test(line) || HEADING_RE.test(line)
 
-// Deve combaciare col tabSize impostato in CodeMirror (MarkdownSourceEditor.vue):
-// un TAB non è largo "N spazi fissi" ma avanza fino al prossimo multiplo di
+// Un TAB non è largo "N spazi fissi" ma avanza fino al prossimo multiplo di
 // TAB_SIZE colonne, quindi il suo spazio effettivo dipende da dove si trova
-// nella riga (esattamente come lo mostra il raw editor). In raw il tasto Tab
-// inserisce 2 spazi letterali (non un carattere TAB), quindi qui serve solo
-// per un eventuale TAB reale incollato da fuori.
+// nella riga: serve per i TAB letterali che arrivano da un file .md importato.
 const TAB_SIZE = 2
 
 // Trasforma la spaziatura "decorativa" di una riga (non strutturale) preservando
@@ -186,6 +202,33 @@ function wrapNbspInMonospace(html) {
   )
 }
 
+// Il formato nativo di Quill per le tabelle è piatto (<tbody><tr><td data-row="…">,
+// nessun <thead>/<th>): il paste di Quill non ha un matcher dedicato per le tabelle,
+// quindi una <table> "normale" generata da marked (con <thead>/<th>) non viene
+// riconosciuta e finisce spezzata in più tabelle da una riga. Ricostruiamo qui la
+// tabella nel formato che Quill si aspetta, appiattendo intestazione e corpo.
+function normalizeTablesForQuill(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  doc.querySelectorAll('table').forEach((table) => {
+    const tbody = doc.createElement('tbody')
+    Array.from(table.rows).forEach((row) => {
+      const rowId = `row-${Math.random().toString(36).slice(2, 6)}`
+      const tr = doc.createElement('tr')
+      Array.from(row.cells).forEach((cell) => {
+        const td = doc.createElement('td')
+        td.setAttribute('data-row', rowId)
+        td.innerHTML = cell.innerHTML.trim() || '<br>'
+        tr.appendChild(td)
+      })
+      tbody.appendChild(tr)
+    })
+    const newTable = doc.createElement('table')
+    newTable.appendChild(tbody)
+    table.replaceWith(newTable)
+  })
+  return doc.body.innerHTML
+}
+
 export function markdownToHtml(markdown) {
   let html = marked.parse(preserveWhitespace(markdown || ''))
   html = wrapNbspInMonospace(html)
@@ -202,6 +245,7 @@ export function markdownToHtml(markdown) {
     /<pre><code(?:\s+class="language-([^"]*)")?>([\s\S]*?)<\/code><\/pre>\s*/g,
     (_m, lang, code) => `<pre data-language="${normalizeLang(lang)}">\n${code.replace(/\n$/, '')}\n</pre>`
   )
+  html = normalizeTablesForQuill(html)
   return html
 }
 
@@ -211,4 +255,13 @@ export function htmlToMarkdown(html) {
 
 export function stripHtml(html) {
   return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+// Il titolo non si digita più a mano: si deduce dal primo h1/h2/h3 presente
+// nel contenuto. Se non c'è alcun titolo nel testo, resta vuoto.
+export function extractTitleFromHtml(html) {
+  if (!html) return ''
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const heading = doc.querySelector('h1, h2, h3')
+  return heading ? heading.textContent.trim() : ''
 }
