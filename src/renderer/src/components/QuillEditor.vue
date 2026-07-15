@@ -1,6 +1,33 @@
 <template>
   <div class="quill-editor">
     <div ref="editorEl"></div>
+
+    <!-- Cerca nella nota (Cmd+F): evidenzia i risultati con un formato Quill
+         dedicato (vedi SearchHighlightBlot) invece di un overlay posizionato
+         a mano, così segue automaticamente scroll/reflow del testo. -->
+    <div v-if="findBar.visible" class="find-bar">
+      <Icon icon="lucide:search" />
+      <input
+        ref="findInputEl"
+        v-model="findBar.query"
+        type="text"
+        placeholder="Cerca nella nota..."
+        @keydown.enter.exact.prevent="nextMatch"
+        @keydown.enter.shift.prevent="prevMatch"
+        @keydown.esc="closeFindBar"
+      />
+      <span class="find-bar-count">{{ findBarCountLabel }}</span>
+      <button type="button" title="Precedente" :disabled="!findBar.matches.length" @click="prevMatch">
+        <Icon icon="lucide:chevron-up" />
+      </button>
+      <button type="button" title="Successivo" :disabled="!findBar.matches.length" @click="nextMatch">
+        <Icon icon="lucide:chevron-down" />
+      </button>
+      <button type="button" title="Chiudi" @click="closeFindBar">
+        <Icon icon="lucide:x" />
+      </button>
+    </div>
+
     <div
       v-if="tableMenu.visible"
       ref="tableMenuEl"
@@ -16,15 +43,125 @@
         {{ action.label }}
       </button>
     </div>
+
+    <!-- Electron non implementa window.prompt() (ritorna sempre null senza
+         mostrare nulla): questo dialogo sostituisce il prompt nativo per
+         link e immagini (vedi openValuePrompt/confirmValuePrompt). Per i
+         link ha due campi (indirizzo + testo) e si riapre in modifica
+         cliccando su un link già inserito (vedi onEditorClick). -->
+    <div v-if="valuePrompt.visible" class="value-prompt-backdrop" @mousedown.self="cancelValuePrompt">
+      <div class="value-prompt" :class="{ 'value-prompt-wide': valuePrompt.kind === 'image' }">
+        <template v-if="valuePrompt.kind === 'link'">
+          <div class="value-prompt-label">Indirizzo del link</div>
+          <input
+            ref="valuePromptUrlEl"
+            v-model="valuePrompt.url"
+            type="text"
+            placeholder="https://..."
+            @keydown.enter="confirmValuePrompt"
+            @keydown.esc="cancelValuePrompt"
+          />
+          <div class="value-prompt-label value-prompt-label-spaced">Testo da visualizzare</div>
+          <input
+            v-model="valuePrompt.text"
+            type="text"
+            placeholder="(vuoto = usa l'indirizzo)"
+            @keydown.enter="confirmValuePrompt"
+            @keydown.esc="cancelValuePrompt"
+          />
+        </template>
+        <template v-else>
+          <div class="value-prompt-label">Immagine</div>
+          <div class="value-prompt-image-source">
+            <button type="button" class="value-prompt-browse" @click="pickLocalImage">
+              <Icon icon="lucide:folder-open" />
+              <span>Scegli file...</span>
+            </button>
+            <span class="value-prompt-or">oppure incolla un URL o trascina un file qui sotto</span>
+          </div>
+          <input
+            ref="valuePromptUrlEl"
+            v-model="valuePrompt.url"
+            type="text"
+            placeholder="https://esempio.com/immagine.png"
+            @keydown.enter="confirmValuePrompt"
+            @keydown.esc="cancelValuePrompt"
+          />
+
+          <div
+            ref="cropAreaEl"
+            class="value-prompt-image-preview"
+            :class="{ 'is-drag-over': isDraggingOver, 'is-empty': !valuePrompt.url, 'is-cropping': editing.cropping }"
+            @dragover.prevent="isDraggingOver = true"
+            @dragleave.prevent="isDraggingOver = false"
+            @drop.prevent="onImageDrop"
+            @mousedown="startCropDrag"
+          >
+            <template v-if="valuePrompt.url">
+              <img
+                v-show="!imagePreviewFailed"
+                :src="imagePreviewSrc"
+                draggable="false"
+                @error="imagePreviewFailed = true"
+                @load="imagePreviewFailed = false"
+              />
+              <div v-if="imagePreviewFailed" class="value-prompt-image-error">Anteprima non disponibile</div>
+              <div v-if="editing.cropping && editing.cropRect" class="value-prompt-crop-box" :style="cropBoxStyle"></div>
+            </template>
+            <template v-else>
+              <div class="value-prompt-image-placeholder">
+                <Icon icon="lucide:image" />
+                <span>Trascina qui un'immagine</span>
+              </div>
+            </template>
+          </div>
+
+          <div v-if="valuePrompt.url && !imagePreviewFailed" class="value-prompt-image-tools">
+            <template v-if="!editing.cropping">
+              <button type="button" title="Ruota a sinistra" :disabled="editing.busy" @click="rotate(-90)">
+                <Icon icon="lucide:rotate-ccw" />
+              </button>
+              <button type="button" title="Ruota a destra" :disabled="editing.busy" @click="rotate(90)">
+                <Icon icon="lucide:rotate-cw" />
+              </button>
+              <button type="button" title="Ritaglia" :disabled="editing.busy" @click="startCrop">
+                <Icon icon="lucide:crop" />
+              </button>
+              <span class="value-prompt-tools-sep"></span>
+              <span class="value-prompt-tools-label">Ridimensiona</span>
+              <button type="button" :disabled="editing.busy" @click="scaleBy(0.75)">75%</button>
+              <button type="button" :disabled="editing.busy" @click="scaleBy(0.5)">50%</button>
+            </template>
+            <template v-else>
+              <span class="value-prompt-tools-label">Trascina per selezionare l'area da ritagliare</span>
+              <div class="value-prompt-actions-spacer"></div>
+              <button type="button" @click="cancelCrop">Annulla</button>
+              <button type="button" class="value-prompt-ok" :disabled="!editing.cropRect || editing.busy" @click="applyCrop">
+                Applica ritaglio
+              </button>
+            </template>
+          </div>
+          <div v-if="editing.error" class="value-prompt-image-error value-prompt-image-error-inline">{{ editing.error }}</div>
+        </template>
+        <div class="value-prompt-actions">
+          <button v-if="valuePrompt.editing" class="value-prompt-remove" @click="removeValueLink">Rimuovi link</button>
+          <div class="value-prompt-actions-spacer"></div>
+          <button class="value-prompt-cancel" @click="cancelValuePrompt">Annulla</button>
+          <button class="value-prompt-ok" @click="confirmValuePrompt">Conferma</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import Quill from 'quill'
 import hljs from 'highlight.js/lib/common'
 import 'quill/dist/quill.snow.css'
+import { Icon } from '@iconify/vue'
 import { useSettingsStore } from '../stores/settings'
+import { api } from '../utils/api'
 
 const settings = useSettingsStore()
 
@@ -43,6 +180,33 @@ const editorEl = ref(null)
 let quill = null
 let internalUpdate = false
 
+// Formati dedicati alla ricerca (Cmd+F): applicati/rimossi con source
+// 'silent' così non finiscono nel contenuto salvato né nella cronologia
+// undo (il testo-change handler e la history di Quill ignorano 'silent').
+// Registrati una sola volta a livello di modulo (non a ogni mount).
+const InlineBlot = Quill.import('blots/inline')
+class SearchHighlightBlot extends InlineBlot {}
+SearchHighlightBlot.blotName = 'search-highlight'
+SearchHighlightBlot.tagName = 'mark'
+SearchHighlightBlot.className = 'ql-search-highlight'
+class SearchHighlightActiveBlot extends InlineBlot {}
+SearchHighlightActiveBlot.blotName = 'search-highlight-active'
+SearchHighlightActiveBlot.tagName = 'mark'
+SearchHighlightActiveBlot.className = 'ql-search-highlight-active'
+Quill.register(SearchHighlightBlot, true)
+Quill.register(SearchHighlightActiveBlot, true)
+
+// Icona per il codice inline: di default Quill usa la stessa "</>" sia per
+// code-block che per code (icons.js mappa entrambi su codeIcon), qui la
+// differenziamo con due backtick, la convenzione universale per il codice
+// inline in Markdown.
+const INLINE_CODE_ICON = `
+  <svg viewbox="0 0 18 18">
+    <path class="ql-fill" d="M6.5 4.5c-1 0-1.7.9-1.7 2 0 .8.4 1.5 1.1 1.8l-.7 2.2h1.1l.8-2.4c.5-.3.8-.9.8-1.6 0-1.1-.6-2-1.4-2z"/>
+    <path class="ql-fill" d="M11.5 4.5c-1 0-1.7.9-1.7 2 0 .8.4 1.5 1.1 1.8l-.7 2.2h1.1l.8-2.4c.5-.3.8-.9.8-1.6 0-1.1-.6-2-1.4-2z"/>
+  </svg>
+`
+
 // Azioni sulla tabella (righe/colonne): esposte tramite menu contestuale al
 // tasto destro su una cella (vedi openTableMenu), non nella toolbar.
 const TABLE_ACTIONS = [
@@ -57,10 +221,10 @@ const TABLE_ACTIONS = [
 
 const toolbarOptions = [
   [{ header: [1, 2, 3, false] }],
-  ['bold', 'italic', 'underline', 'strike'],
+  ['bold', 'italic', 'underline', 'strike', 'code'],
   [{ color: [] }, { background: [] }],
   [{ list: ['ordered', 'bullet', 'unchecked', false] }],
-  ['blockquote', 'code-block', 'link'],
+  ['blockquote', 'code-block', 'link', 'image'],
   ['table'],
   ['clean']
 ]
@@ -83,6 +247,7 @@ const TOOLBAR_HTML = `
     <button class="ql-italic" type="button"></button>
     <button class="ql-underline" type="button"></button>
     <button class="ql-strike" type="button"></button>
+    <button class="ql-code" type="button"></button>
   </span>
   <span class="ql-formats">
     <select class="ql-color"></select>
@@ -100,6 +265,7 @@ const TOOLBAR_HTML = `
     <button class="ql-blockquote" type="button"></button>
     <button class="ql-code-block" type="button"></button>
     <button class="ql-link" type="button"></button>
+    <button class="ql-image" type="button"></button>
   </span>
   <span class="ql-formats">
     <button class="ql-table" type="button"></button>
@@ -148,8 +314,411 @@ function loadContent(html) {
 const toggle = (quill, range, name, value, current) =>
   quill.format(name, current === value ? false : value, 'user')
 
+// Dialogo per link/immagine: Electron non implementa window.prompt() (ritorna
+// sempre null senza mostrare nulla), quindi serve un input nostro. Per i link
+// ha due campi (indirizzo + testo visualizzato) e si può riaprire in modifica
+// su un link già esistente (editing=true), cliccandoci sopra (onEditorClick)
+// o riaprendo il bottone/scorciatoia col cursore già dentro un link.
+const valuePromptUrlEl = ref(null)
+const valuePrompt = reactive({ visible: false, kind: null, index: 0, length: 0, url: '', text: '', editing: false })
+const imagePreviewFailed = ref(false)
+const imagePreviewSrc = ref('')
+const LinkFormat = Quill.import('formats/link')
+
+const IMAGE_TOO_LARGE_MSG = 'Immagine troppo grande (limite 8MB): scegline una più piccola o comprimila prima di aggiungerla.'
+const IMAGE_READ_FAILED_MSG = 'Impossibile leggere questo file.'
+const errorMessageFor = (code) => (code === 'too-large' ? IMAGE_TOO_LARGE_MSG : IMAGE_READ_FAILED_MSG)
+
+// Il renderer dev è servito da http://localhost:5173, non file://: Chromium
+// blocca il caricamento di risorse file:// da un'origine http (e per coerenza
+// evitiamo il problema anche in produzione), quindi un percorso locale va
+// letto e incorporato come data URI invece che referenziato per path. Un URL
+// remoto o un data URI già pronto (dal file picker) si usano così come sono.
+// Async e condivisa fra anteprima e inserimento finale, così quello che si
+// vede è esattamente quello che verrà salvato.
+async function resolveImageSrc(raw) {
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('data:')) return { src: raw }
+  const path = raw.replace(/^file:\/\//, '')
+  const result = await api.readLocalImage(path)
+  if (!result) return { src: null }
+  if (result.error) return { src: null, error: errorMessageFor(result.error) }
+  return { src: result.dataUri }
+}
+
+watch(
+  () => valuePrompt.url,
+  async (raw) => {
+    const trimmed = raw.trim()
+    editing.error = ''
+    if (!trimmed) {
+      imagePreviewSrc.value = ''
+      imagePreviewFailed.value = false
+      return
+    }
+    const { src, error } = await resolveImageSrc(trimmed)
+    // se nel frattempo il campo è cambiato ancora, questa risposta è superata
+    if (valuePrompt.url.trim() !== trimmed) return
+    imagePreviewSrc.value = src || ''
+    imagePreviewFailed.value = !src
+    if (error) editing.error = error
+  },
+  { immediate: true }
+)
+
+// Apre il selettore file nativo (o l'equivalente <input type="file"> nel
+// fallback browser): il file scelto arriva già come data URI (vedi
+// pickImage), quindi qui non serve altra conversione.
+async function pickLocalImage() {
+  const result = await api.pickImage()
+  if (!result) return
+  if (result.error) {
+    editing.error = errorMessageFor(result.error)
+    return
+  }
+  valuePrompt.url = result.dataUri
+}
+
+// Trascinare un file immagine direttamente sull'anteprima è un'alternativa al
+// bottone "Scegli file": stessa lettura come data URI.
+function onImageDrop(event) {
+  isDraggingOver.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (!file || !file.type.startsWith('image/')) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    valuePrompt.url = String(reader.result)
+  }
+  reader.readAsDataURL(file)
+}
+
+// Ruota/ridimensiona/ritaglia via canvas: funziona solo su data URI o su
+// immagini remote che concedono CORS (altrimenti il canvas risulta "tainted"
+// e toDataURL lancia una SecurityError, gestita mostrando editing.error).
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('load-failed'))
+    img.src = src
+  })
+}
+
+const CANVAS_ERROR = 'Impossibile modificare questa immagine (probabilmente remota e senza permesso CORS).'
+
+async function withImageEdit(transform) {
+  editing.busy = true
+  editing.error = ''
+  try {
+    const img = await loadImageElement(imagePreviewSrc.value)
+    const canvas = transform(img)
+    valuePrompt.url = canvas.toDataURL('image/png')
+  } catch {
+    editing.error = CANVAS_ERROR
+  } finally {
+    editing.busy = false
+  }
+}
+
+function rotate(degrees) {
+  return withImageEdit((img) => {
+    const rad = (degrees * Math.PI) / 180
+    const swap = Math.abs(degrees % 180) !== 0
+    const canvas = document.createElement('canvas')
+    canvas.width = swap ? img.height : img.width
+    canvas.height = swap ? img.width : img.height
+    const ctx = canvas.getContext('2d')
+    ctx.translate(canvas.width / 2, canvas.height / 2)
+    ctx.rotate(rad)
+    ctx.drawImage(img, -img.width / 2, -img.height / 2)
+    return canvas
+  })
+}
+
+function scaleBy(factor) {
+  return withImageEdit((img) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(img.width * factor))
+    canvas.height = Math.max(1, Math.round(img.height * factor))
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    return canvas
+  })
+}
+
+// Ritaglio: si disegna un rettangolo di selezione trascinando sull'anteprima
+// (coordinate in frazioni 0..1 relative all'immagine mostrata, indipendenti
+// dallo zoom/dimensione del dialogo), poi si applica sull'immagine reale.
+const cropAreaEl = ref(null)
+const isDraggingOver = ref(false)
+const editing = reactive({ busy: false, error: '', cropping: false, cropRect: null })
+let cropDragStart = null
+
+const cropBoxStyle = computed(() => {
+  const r = editing.cropRect
+  if (!r) return {}
+  return { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` }
+})
+
+const clamp01 = (v) => Math.min(1, Math.max(0, v))
+
+function startCrop() {
+  editing.error = ''
+  editing.cropping = true
+  editing.cropRect = null
+}
+
+function cancelCrop() {
+  editing.cropping = false
+  editing.cropRect = null
+}
+
+function startCropDrag(event) {
+  if (!editing.cropping || !cropAreaEl.value) return
+  const rect = cropAreaEl.value.getBoundingClientRect()
+  cropDragStart = { x: clamp01((event.clientX - rect.left) / rect.width), y: clamp01((event.clientY - rect.top) / rect.height) }
+  editing.cropRect = { x: cropDragStart.x, y: cropDragStart.y, w: 0, h: 0 }
+  window.addEventListener('mousemove', onCropDrag)
+  window.addEventListener('mouseup', endCropDrag)
+}
+
+function onCropDrag(event) {
+  if (!cropDragStart || !cropAreaEl.value) return
+  const rect = cropAreaEl.value.getBoundingClientRect()
+  const x = clamp01((event.clientX - rect.left) / rect.width)
+  const y = clamp01((event.clientY - rect.top) / rect.height)
+  editing.cropRect = {
+    x: Math.min(cropDragStart.x, x),
+    y: Math.min(cropDragStart.y, y),
+    w: Math.abs(x - cropDragStart.x),
+    h: Math.abs(y - cropDragStart.y)
+  }
+}
+
+function endCropDrag() {
+  window.removeEventListener('mousemove', onCropDrag)
+  window.removeEventListener('mouseup', endCropDrag)
+  cropDragStart = null
+}
+
+async function applyCrop() {
+  const r = editing.cropRect
+  if (!r || r.w < 0.02 || r.h < 0.02) {
+    cancelCrop()
+    return
+  }
+  await withImageEdit((img) => {
+    const sx = r.x * img.width
+    const sy = r.y * img.height
+    const sw = r.w * img.width
+    const sh = r.h * img.height
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(sw))
+    canvas.height = Math.max(1, Math.round(sh))
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+    return canvas
+  })
+  editing.cropping = false
+  editing.cropRect = null
+}
+
+function openValuePrompt(kind, range, prefill = {}) {
+  if (!range) return
+  valuePrompt.kind = kind
+  valuePrompt.index = range.index
+  valuePrompt.length = range.length
+  valuePrompt.url = prefill.url || ''
+  valuePrompt.text = prefill.text ?? (range.length > 0 ? quill.getText(range.index, range.length) : '')
+  valuePrompt.editing = !!prefill.editing
+  editing.busy = false
+  editing.error = ''
+  editing.cropping = false
+  editing.cropRect = null
+  valuePrompt.visible = true
+  nextTick(() => valuePromptUrlEl.value?.focus())
+}
+
+function cancelValuePrompt() {
+  valuePrompt.visible = false
+  quill?.focus()
+}
+
+async function confirmValuePrompt() {
+  const { kind, index, length } = valuePrompt
+  if (kind === 'image') {
+    const raw = valuePrompt.url.trim()
+    if (!raw) {
+      valuePrompt.visible = false
+      return quill?.focus()
+    }
+    // Si ririsolve invece di fidarsi ciecamente di imagePreviewSrc: se si preme
+    // Conferma subito dopo aver digitato, il watcher dell'anteprima potrebbe
+    // non aver ancora finito la conversione asincrona del percorso locale.
+    const { src, error } = await resolveImageSrc(raw)
+    if (error) {
+      editing.error = error
+      return
+    }
+    valuePrompt.visible = false
+    if (!src) return quill?.focus()
+    quill.insertEmbed(index, 'image', src, 'user')
+    quill.setSelection(index + 1, 0, 'user')
+    quill.focus()
+    return
+  }
+  const url = valuePrompt.url.trim()
+  valuePrompt.visible = false
+  if (!url) return quill?.focus()
+  const text = valuePrompt.text.trim() || url
+  // Sostituisce l'intero range (testo+link precedenti, se presenti) col nuovo
+  // testo formattato: funziona sia per l'inserimento che per la modifica.
+  quill.deleteText(index, length, 'user')
+  quill.insertText(index, text, 'link', url, 'user')
+  quill.setSelection(index + text.length, 0, 'user')
+  quill.focus()
+}
+
+function removeValueLink() {
+  const { index, length } = valuePrompt
+  valuePrompt.visible = false
+  quill.formatText(index, length, 'link', false, 'user')
+  quill.setSelection(index + length, 0, 'user')
+  quill.focus()
+}
+
+// Se il cursore è già dentro un link esistente, riapre il dialogo in
+// modifica (precompilato) invece di crearne uno nuovo sopra.
+function findLinkAt(index) {
+  const [link, offset] = quill.scroll.descendant(LinkFormat, index)
+  if (!link) return null
+  return { index: index - offset, length: link.length(), url: link.domNode.getAttribute('href'), text: link.domNode.textContent }
+}
+
+// Un click su un link esistente nel contenuto riapre il dialogo invece di
+// seguirlo: è il modo più diretto per modificarlo o rimuoverlo.
+function onEditorClick(event) {
+  const anchor = event.target.closest('a')
+  if (!anchor || !quill.root.contains(anchor)) return
+  event.preventDefault()
+  const range = quill.getSelection(true)
+  if (!range) return
+  openLinkPromptForRange(range)
+}
+
+// Condivisa da bottone toolbar e scorciatoia da tastiera: se il cursore è già
+// dentro un link esistente riapre il dialogo in modifica invece di creare un
+// nuovo link sopra a quello presente.
+function openLinkPromptForRange(range) {
+  if (!range) return
+  const existing = findLinkAt(range.index)
+  if (existing) {
+    openValuePrompt('link', { index: existing.index, length: existing.length }, { url: existing.url, text: existing.text, editing: true })
+  } else {
+    openValuePrompt('link', range)
+  }
+}
+
+// Cerca nella nota (Cmd+F): ricerca case-insensitive su tutto il testo
+// semplice, evidenziata con i due formati registrati sopra.
+const findInputEl = ref(null)
+const findBar = reactive({ visible: false, query: '', matches: [], currentIndex: -1 })
+
+const findBarCountLabel = computed(() => {
+  if (!findBar.query.trim()) return ''
+  return findBar.matches.length ? `${findBar.currentIndex + 1}/${findBar.matches.length}` : '0/0'
+})
+
+function computeMatches(query) {
+  if (!quill || !query) return []
+  const haystack = quill.getText().toLowerCase()
+  const needle = query.toLowerCase()
+  const matches = []
+  let from = 0
+  while (true) {
+    const idx = haystack.indexOf(needle, from)
+    if (idx === -1) break
+    matches.push({ index: idx, length: needle.length })
+    from = idx + needle.length
+  }
+  return matches
+}
+
+function clearHighlights() {
+  if (!quill) return
+  const length = quill.getLength()
+  quill.formatText(0, length, 'search-highlight', false, 'silent')
+  quill.formatText(0, length, 'search-highlight-active', false, 'silent')
+}
+
+function applyHighlights() {
+  clearHighlights()
+  findBar.matches.forEach((m, i) => {
+    const format = i === findBar.currentIndex ? 'search-highlight-active' : 'search-highlight'
+    quill.formatText(m.index, m.length, format, true, 'silent')
+  })
+}
+
+// Solo scroll, niente quill.setSelection(): setSelection sposta sempre il
+// focus DOM nativo sull'editor (indipendentemente dal source passato a
+// Quill, che riguarda solo il suo sistema di eventi interno), il che
+// strapperebbe il focus dal campo di ricerca a ogni tasto premuto.
+function scrollToCurrentMatch() {
+  const m = findBar.matches[findBar.currentIndex]
+  if (!m || !quill || !editorEl.value) return
+  const bounds = quill.getBounds(m.index, m.length)
+  if (!bounds) return
+  const container = editorEl.value
+  const target = container.scrollTop + bounds.top - container.clientHeight / 2
+  container.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
+}
+
+function runSearch() {
+  findBar.matches = computeMatches(findBar.query.trim())
+  findBar.currentIndex = findBar.matches.length ? 0 : -1
+  applyHighlights()
+  scrollToCurrentMatch()
+}
+
+watch(() => findBar.query, runSearch)
+
+function nextMatch() {
+  if (!findBar.matches.length) return
+  findBar.currentIndex = (findBar.currentIndex + 1) % findBar.matches.length
+  applyHighlights()
+  scrollToCurrentMatch()
+  findInputEl.value?.focus()
+}
+
+function prevMatch() {
+  if (!findBar.matches.length) return
+  findBar.currentIndex = (findBar.currentIndex - 1 + findBar.matches.length) % findBar.matches.length
+  applyHighlights()
+  scrollToCurrentMatch()
+  findInputEl.value?.focus()
+}
+
+function openFindBar() {
+  findBar.visible = true
+  nextTick(() => findInputEl.value?.focus())
+}
+
+function closeFindBar() {
+  // Alla chiusura (non durante la digitazione) si sposta anche il cursore
+  // reale sull'ultimo risultato attivo, così si riprende a scrivere lì.
+  const m = findBar.matches[findBar.currentIndex]
+  findBar.visible = false
+  clearHighlights()
+  findBar.matches = []
+  findBar.currentIndex = -1
+  if (m && quill) quill.setSelection(m.index, m.length, 'user')
+  quill?.focus()
+}
+
 const editorBindings = {
+  findInNote: { key: 70, shortKey: true, handler() { openFindBar(); return false } },
   strike: { key: 88, shortKey: true, shiftKey: true, handler(r, c) { toggle(this.quill, r, 'strike', true, c.format.strike); return false } },
+  code: { key: 69, shortKey: true, handler(r, c) { toggle(this.quill, r, 'code', true, c.format.code); return false } },
   h1: { key: 49, shortKey: true, altKey: true, handler(r, c) { toggle(this.quill, r, 'header', 1, c.format.header); return false } },
   h2: { key: 50, shortKey: true, altKey: true, handler(r, c) { toggle(this.quill, r, 'header', 2, c.format.header); return false } },
   h3: { key: 51, shortKey: true, altKey: true, handler(r, c) { toggle(this.quill, r, 'header', 3, c.format.header); return false } },
@@ -159,13 +728,24 @@ const editorBindings = {
   checkList: { key: 57, shortKey: true, shiftKey: true, handler(r, c) { const on = c.format.list === 'checked' || c.format.list === 'unchecked'; this.quill.format('list', on ? false : 'unchecked', 'user'); return false } },
   blockquote: { key: 66, shortKey: true, shiftKey: true, handler(r, c) { this.quill.format('blockquote', !c.format.blockquote, 'user'); return false } },
   codeBlock: { key: 67, shortKey: true, shiftKey: true, handler(r, c) { this.quill.format('code-block', !c.format['code-block'], 'user'); return false } },
-  link: { key: 75, shortKey: true, handler(r) { if (r && r.length > 0) { const url = window.prompt('Indirizzo del link'); if (url) this.quill.format('link', url, 'user') } return false } }
+  link: { key: 75, shortKey: true, handler(r) { openLinkPromptForRange(r); return false } }
 }
 
 // Il bottone tabella non corrisponde a un toggle di formattazione: inserisce
 // una tabella 2x2 alla posizione del cursore tramite il modulo Table di Quill.
 function insertTable() {
   this.quill.getModule('table')?.insertTable(2, 2)
+}
+
+// Sovrascrivono i default di Quill/Snow: il link di default richiede una
+// selezione preesistente (altrimenti l'handler ritorna silenziosamente senza
+// alcun feedback, sembrando "rotto"), e l'immagine di default apre un file
+// picker che incorpora il file come base64 invece di linkarlo per path/URL.
+function toolbarLink() {
+  openLinkPromptForRange(this.quill.getSelection(true))
+}
+function toolbarImage() {
+  openValuePrompt('image', this.quill.getSelection(true))
 }
 
 // Righe/colonne: menu contestuale al tasto destro su una cella. Le API del
@@ -224,16 +804,25 @@ onMounted(async () => {
   quill = new Quill(editorEl.value, {
     theme: 'snow',
     modules: {
-      toolbar: { container: toolbarContainer, handlers: { table: insertTable } },
+      toolbar: {
+        container: toolbarContainer,
+        handlers: { table: insertTable, link: toolbarLink, image: toolbarImage }
+      },
       table: true,
       syntax: { hljs, languages: CODE_LANGUAGES },
       keyboard: { bindings: editorBindings }
     }
   })
 
+  // Quill usa la stessa icona "</>" sia per code-block che per code inline
+  // (icons['code'] === icons['code-block']): la sostituiamo per distinguerle.
+  const inlineCodeButton = quill.getModule('toolbar').container.querySelector('button.ql-code')
+  if (inlineCodeButton) inlineCodeButton.innerHTML = INLINE_CODE_ICON
+
   loadContent(props.content)
   applySpellcheck()
   quill.root.addEventListener('contextmenu', openTableMenu)
+  quill.root.addEventListener('click', onEditorClick)
   window.addEventListener('mousedown', onGlobalMousedown)
 
   quill.on('text-change', (_delta, _oldDelta, source) => {
@@ -244,6 +833,9 @@ onMounted(async () => {
     // includerebbe quel <select>, facendolo finire salvato nel contenuto della nota.
     const html = quill.getSemanticHTML()
     emit('change', html === '<p><br></p>' ? '' : html)
+    // il testo è cambiato: le posizioni dei risultati trovati finora non sono
+    // più valide, si ricalcolano sul contenuto aggiornato.
+    if (findBar.visible && findBar.query.trim()) runSearch()
   })
 })
 
@@ -278,9 +870,76 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .quill-editor {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+/* Cerca nella nota: barra fissa in alto a destra rispetto all'area di
+   editing, non blocca l'interazione col resto (niente backdrop, a differenza
+   del dialogo link/immagine). */
+.find-bar {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--editor-toolbar-bg);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 6px 8px;
+}
+.find-bar :deep(svg) {
+  font-size: 14px;
+  color: var(--icon-color);
+  flex-shrink: 0;
+}
+.find-bar input {
+  width: 160px;
+  background: var(--search-bg);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 6px;
+  padding: 4px 7px;
+  font-size: 12px;
+  color: var(--p-text-color);
+  outline: none;
+}
+.find-bar-count {
+  font-size: 11px;
+  color: var(--p-text-muted-color);
+  min-width: 34px;
+  text-align: center;
+}
+.find-bar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--icon-color);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 5px;
+}
+.find-bar button:hover {
+  background: var(--selection-bg);
+}
+.find-bar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.quill-editor :deep(.ql-search-highlight) {
+  background: rgba(255, 197, 23, 0.35);
+  border-radius: 2px;
+}
+.quill-editor :deep(.ql-search-highlight-active) {
+  background: #ffb020;
+  color: #1a1a1a;
+  border-radius: 2px;
 }
 
 /* Menu contestuale righe/colonne: aperto al tasto destro su una cella (vedi
@@ -321,6 +980,207 @@ onBeforeUnmount(() => {
   margin-top: 4px;
   border-top: 1px solid var(--p-content-border-color);
   padding-top: 8px;
+}
+
+/* Dialogo per link/immagine: sostituisce window.prompt() (non implementato
+   da Electron, vedi openValuePrompt). */
+.value-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.value-prompt {
+  width: 360px;
+  max-width: calc(100% - 32px);
+  background: var(--editor-toolbar-bg);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  padding: 14px;
+}
+.value-prompt-wide {
+  width: 480px;
+}
+.value-prompt-label {
+  font-size: 13px;
+  color: var(--p-text-color);
+  margin-bottom: 8px;
+}
+.value-prompt-label-spaced {
+  margin-top: 12px;
+}
+.value-prompt input {
+  width: 100%;
+  background: var(--search-bg);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-size: 13px;
+  color: var(--p-text-color);
+  outline: none;
+}
+.value-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.value-prompt-actions button {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.value-prompt-cancel {
+  background: transparent;
+  color: var(--p-text-color);
+}
+.value-prompt-cancel:hover {
+  background: var(--selection-bg);
+}
+.value-prompt-ok {
+  background: var(--p-text-color);
+  color: var(--editor-bg);
+  font-weight: 600;
+}
+.value-prompt-actions-spacer {
+  flex: 1;
+}
+.value-prompt-remove {
+  background: transparent;
+  color: #e5484d;
+}
+.value-prompt-image-source {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.value-prompt-browse {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--p-content-border-color);
+  background: transparent;
+  color: var(--p-text-color);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 7px;
+}
+.value-prompt-browse:hover {
+  background: var(--selection-bg);
+}
+.value-prompt-browse :deep(svg) {
+  font-size: 14px;
+}
+.value-prompt-or {
+  font-size: 12px;
+  color: var(--p-text-muted-color);
+}
+.value-prompt-image-preview {
+  position: relative;
+  margin-top: 10px;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 7px;
+  background: var(--search-bg);
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.value-prompt-image-preview.is-empty {
+  border-style: dashed;
+  border-width: 2px;
+}
+.value-prompt-image-preview.is-drag-over {
+  border-color: var(--p-text-color);
+  background: var(--selection-bg);
+}
+.value-prompt-image-preview.is-cropping {
+  cursor: crosshair;
+  user-select: none;
+}
+.value-prompt-image-preview img {
+  max-width: 100%;
+  max-height: 320px;
+  display: block;
+}
+.value-prompt-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--p-text-muted-color);
+  font-size: 13px;
+  pointer-events: none;
+}
+.value-prompt-image-placeholder :deep(svg) {
+  font-size: 32px;
+  opacity: 0.6;
+}
+.value-prompt-crop-box {
+  position: absolute;
+  border: 1.5px dashed #fff;
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.value-prompt-image-error {
+  padding: 16px;
+  font-size: 12px;
+  color: var(--p-text-muted-color);
+}
+.value-prompt-image-error-inline {
+  padding: 8px 0 0;
+  color: #e5484d;
+}
+.value-prompt-image-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.value-prompt-image-tools button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--p-content-border-color);
+  background: transparent;
+  color: var(--p-text-color);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 9px;
+  border-radius: 6px;
+}
+.value-prompt-image-tools button:hover {
+  background: var(--selection-bg);
+}
+.value-prompt-image-tools button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.value-prompt-image-tools :deep(svg) {
+  font-size: 14px;
+}
+.value-prompt-tools-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--p-content-border-color);
+  margin: 0 2px;
+}
+.value-prompt-tools-label {
+  font-size: 12px;
+  color: var(--p-text-muted-color);
+}
+.value-prompt-remove:hover {
+  background: rgba(229, 72, 77, 0.14);
 }
 
 .quill-editor :deep(.ql-container) {

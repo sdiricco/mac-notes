@@ -43,6 +43,9 @@
           <button class="icon-btn" title="Copia come Markdown" @click="copyNote">
             <Icon icon="lucide:copy" />
           </button>
+          <button class="icon-btn" title="Mostra la cartella delle note nel Finder" @click="api.revealDataFile()">
+            <Icon icon="lucide:folder-open" />
+          </button>
           <button
             v-if="!store.selectedNote.trashed"
             class="icon-btn"
@@ -306,21 +309,32 @@ async function copyNote() {
 .floating-toolbar :deep(.ql-picker.ql-list) {
   width: 78px;
 }
-.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-label)::before,
-.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-item)::before {
+.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-label)::before {
   content: 'Lista';
 }
-.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-label[data-value='ordered'])::before,
-.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-item[data-value='ordered'])::before {
+.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-label[data-value='ordered'])::before {
   content: 'Numerata';
 }
-.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-label[data-value='bullet'])::before,
-.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-item[data-value='bullet'])::before {
+.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-label[data-value='bullet'])::before {
   content: 'Puntata';
 }
-.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-label[data-value='unchecked'])::before,
-.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-item[data-value='unchecked'])::before {
+.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-label[data-value='unchecked'])::before {
   content: 'Checklist';
+}
+
+/* Nelle voci del menu (aperto) un glifo davanti al testo aiuta a distinguere
+   subito il tipo di lista, invece del solo nome. */
+.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-item)::before {
+  content: '– Lista';
+}
+.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-item[data-value='ordered'])::before {
+  content: '1. Numerata';
+}
+.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-item[data-value='bullet'])::before {
+  content: '• Puntata';
+}
+.floating-toolbar :deep(.ql-picker.ql-list .ql-picker-item[data-value='unchecked'])::before {
+  content: '☑ Checklist';
 }
 
 /* Color/background: la label mostra l'icona del pennarello, non un testo con

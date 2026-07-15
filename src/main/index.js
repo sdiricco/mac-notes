@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { loadData, saveData } from './store'
+import { loadData, saveNote, deleteNoteFile, saveFolders, DATA_DIR } from './store'
 import { buildMenu } from './menu'
 import { initUpdateCheck } from './updateCheck'
 import { initFileTransfer } from './fileTransfer'
@@ -64,9 +64,23 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('store:load', () => loadData())
-  ipcMain.handle('store:save', (_event, data) => {
-    saveData(data)
+  ipcMain.handle('store:save-note', (_event, note) => {
+    saveNote(note)
     return true
+  })
+  ipcMain.handle('store:delete-note', (_event, id) => {
+    deleteNoteFile(id)
+    return true
+  })
+  ipcMain.handle('store:save-folders', (_event, folders) => {
+    saveFolders(folders)
+    return true
+  })
+  ipcMain.handle('store:reveal-in-finder', () => {
+    // Ora l'archivio è una cartella (una nota per file), non più un unico
+    // file: si apre direttamente la cartella invece di selezionare un file al
+    // suo interno.
+    shell.openPath(DATA_DIR())
   })
 
   createWindow()

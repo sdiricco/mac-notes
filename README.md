@@ -41,7 +41,7 @@ npm install
 npm run dev        # dev server + finestra Electron con hot reload
 ```
 
-I dati sono salvati in `~/Library/Application Support/mac-notes/notes-data.json`.
+I dati sono salvati in `~/Library/Application Support/mac-notes/`: un file `.json` per nota in `notes/`, più `folders.json` per le cartelle. (Le versioni precedenti usavano un unico `notes-data.json`: viene migrato automaticamente al primo avvio.)
 
 Nota: aperto in un browser normale (senza Electron) il renderer usa un fallback su
 localStorage (`src/renderer/src/utils/api.js`), utile per la preview UI.

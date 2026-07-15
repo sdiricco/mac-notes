@@ -1,12 +1,54 @@
 import { defineStore } from 'pinia'
 import { v4 as uuid } from 'uuid'
-import { debounce } from '../utils/debounce'
 import { stripHtml, extractTitleFromHtml } from '../utils/markdown'
 import { api } from '../utils/api'
 import { useSettingsStore } from './settings'
 
 const ALL = 'all'
 const TRASH = 'trash'
+
+// I Proxy reattivi di Pinia non sono serializzabili via IPC: servono oggetti puri.
+const cloneNote = (note) => JSON.parse(JSON.stringify(note))
+const cloneFolders = (folders) => JSON.parse(JSON.stringify(folders))
+
+// Persistenza granulare: un file per nota (vedi main/store.js), non un unico
+// blob con tutto l'archivio, per evitare di riscrivere ogni nota a ogni
+// battitura. Il debounce è per-id così digitare in una nota non cancella il
+// salvataggio in sospeso di un'altra nota (es. cambio nota entro 350ms).
+const NOTE_SAVE_DELAY = 350
+const pendingNoteSaves = new Map()
+
+function cancelPendingSave(id) {
+  clearTimeout(pendingNoteSaves.get(id))
+  pendingNoteSaves.delete(id)
+}
+
+function scheduleNoteSave(note) {
+  cancelPendingSave(note.id)
+  const snapshot = cloneNote(note)
+  pendingNoteSaves.set(
+    note.id,
+    setTimeout(() => {
+      pendingNoteSaves.delete(note.id)
+      api.saveNote(snapshot)
+    }, NOTE_SAVE_DELAY)
+  )
+}
+
+// Azioni discrete (non per-keystroke): si salva subito, niente debounce.
+function saveNoteNow(note) {
+  cancelPendingSave(note.id)
+  api.saveNote(cloneNote(note))
+}
+
+function deleteNoteFile(id) {
+  cancelPendingSave(id)
+  api.deleteNoteFile(id)
+}
+
+function saveFoldersNow(folders) {
+  api.saveFolders(cloneFolders(folders))
+}
 
 export const useNotesStore = defineStore('notes', {
   state: () => ({
@@ -76,12 +118,6 @@ export const useNotesStore = defineStore('notes', {
       this.ready = true
     },
 
-    persist: debounce(function () {
-      // i Proxy reattivi di Pinia non sono serializzabili via IPC: servono oggetti puri
-      const plain = JSON.parse(JSON.stringify({ folders: this.folders, notes: this.notes }))
-      api.saveData(plain)
-    }, 350),
-
     selectFolder(folderId) {
       this.selectedFolderId = folderId
       this.searchQuery = ''
@@ -113,7 +149,7 @@ export const useNotesStore = defineStore('notes', {
       this.notes.unshift(note)
       this.selectedFolderId = targetFolder
       this.selectedNoteId = note.id
-      this.persist()
+      saveNoteNow(note)
       return note
     },
 
@@ -125,7 +161,7 @@ export const useNotesStore = defineStore('notes', {
       // rinomina manuale precedente, per rispecchiare sempre il contenuto.
       const finalPatch = 'content' in patch ? { ...patch, title: extractTitleFromHtml(patch.content) } : patch
       Object.assign(note, finalPatch, { updatedAt: Date.now() })
-      this.persist()
+      scheduleNoteSave(note)
     },
 
     duplicateNote(id) {
@@ -144,7 +180,7 @@ export const useNotesStore = defineStore('notes', {
       const idx = this.notes.findIndex((n) => n.id === id)
       this.notes.splice(idx + 1, 0, copy)
       this.selectedNoteId = copy.id
-      this.persist()
+      saveNoteNow(copy)
       return copy
     },
 
@@ -152,7 +188,7 @@ export const useNotesStore = defineStore('notes', {
       const note = this.notes.find((n) => n.id === id)
       if (!note) return
       note.pinned = !note.pinned
-      this.persist()
+      saveNoteNow(note)
     },
 
     trashNote(id) {
@@ -164,7 +200,7 @@ export const useNotesStore = defineStore('notes', {
         const next = this.visibleNotes.find((n) => n.id !== id)
         this.selectedNoteId = next ? next.id : null
       }
-      this.persist()
+      saveNoteNow(note)
     },
 
     restoreNote(id) {
@@ -172,7 +208,7 @@ export const useNotesStore = defineStore('notes', {
       if (!note) return
       note.trashed = false
       note.updatedAt = Date.now()
-      this.persist()
+      saveNoteNow(note)
     },
 
     deleteNotePermanently(id) {
@@ -181,21 +217,22 @@ export const useNotesStore = defineStore('notes', {
         const next = this.visibleNotes[0]
         this.selectedNoteId = next ? next.id : null
       }
-      this.persist()
+      deleteNoteFile(id)
     },
 
     emptyTrash() {
+      const trashedIds = this.notes.filter((n) => n.trashed).map((n) => n.id)
       this.notes = this.notes.filter((n) => !n.trashed)
       if (this.selectedNoteId && !this.notes.find((n) => n.id === this.selectedNoteId)) {
         this.selectedNoteId = null
       }
-      this.persist()
+      trashedIds.forEach(deleteNoteFile)
     },
 
     createFolder(name) {
       const folder = { id: uuid(), name: name?.trim() || 'Nuova cartella', createdAt: Date.now() }
       this.folders.push(folder)
-      this.persist()
+      saveFoldersNow(this.folders)
       return folder
     },
 
@@ -203,21 +240,21 @@ export const useNotesStore = defineStore('notes', {
       const folder = this.folders.find((f) => f.id === id)
       if (!folder || !name?.trim()) return
       folder.name = name.trim()
-      this.persist()
+      saveFoldersNow(this.folders)
     },
 
     deleteFolder(id) {
-      this.notes.forEach((n) => {
-        if (n.folderId === id) {
-          n.trashed = true
-          n.updatedAt = Date.now()
-        }
+      const affected = this.notes.filter((n) => n.folderId === id)
+      affected.forEach((n) => {
+        n.trashed = true
+        n.updatedAt = Date.now()
       })
       this.folders = this.folders.filter((f) => f.id !== id)
       if (this.selectedFolderId === id) {
         this.selectFolder(ALL)
       }
-      this.persist()
+      saveFoldersNow(this.folders)
+      affected.forEach(saveNoteNow)
     }
   }
 })

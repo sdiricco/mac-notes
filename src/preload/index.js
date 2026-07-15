@@ -3,7 +3,9 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 const api = {
   loadData: () => ipcRenderer.invoke('store:load'),
-  saveData: (data) => ipcRenderer.invoke('store:save', data),
+  saveNote: (note) => ipcRenderer.invoke('store:save-note', note),
+  deleteNoteFile: (id) => ipcRenderer.invoke('store:delete-note', id),
+  saveFolders: (folders) => ipcRenderer.invoke('store:save-folders', folders),
   onMenu: (channel, callback) => {
     const validChannels = [
       'menu:new-note',
@@ -28,7 +30,10 @@ const api = {
   },
   exportMarkdown: (markdown, suggestedName) =>
     ipcRenderer.invoke('note:export-md', { markdown, suggestedName }),
-  importMarkdown: () => ipcRenderer.invoke('note:import-md')
+  importMarkdown: () => ipcRenderer.invoke('note:import-md'),
+  pickImage: () => ipcRenderer.invoke('note:pick-image'),
+  readLocalImage: (filePath) => ipcRenderer.invoke('note:read-local-image', filePath),
+  revealDataFile: () => ipcRenderer.invoke('store:reveal-in-finder')
 }
 
 if (process.contextIsolated) {
