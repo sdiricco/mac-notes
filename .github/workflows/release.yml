@@ -1,12 +1,14 @@
 name: Release
 
-# Ogni tag "vX.Y.Z" builda l'app su mac/win/linux e pubblica una release GitHub
-# con gli artefatti (dmg/zip, nsis, AppImage/deb). Vedi package.json > build.publish.
+# Ogni tag "vX.Y.Z" builda l'app su mac/win/linux (x64 + arm64 per ognuno) e
+# pubblica una release GitHub con gli artefatti (dmg/zip, nsis, AppImage/deb).
+# Vedi package.json > build.publish.
 #
-# macOS ha un job per architettura (arm64/x64): costruire due DMG in sequenza
-# sullo stesso runner causa "hdiutil detach" flakiness (l'immagine disco del
-# primo DMG non si smonta in tempo prima che parta il secondo), che fa fallire
-# electron-builder anche dopo aver già caricato quasi tutti gli asset.
+# Ogni piattaforma ha un job per architettura: costruire più binari in
+# sequenza sullo stesso runner causa flakiness (es. su mac "hdiutil detach" -
+# l'immagine disco del primo DMG non si smonta in tempo prima che parta il
+# secondo), che fa fallire electron-builder anche dopo aver già caricato
+# quasi tutti gli asset.
 on:
   push:
     tags:
@@ -38,12 +40,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release-other:
+  release-linux:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        arch: [x64, arm64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -55,7 +57,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build e pubblica
-        run: npm run release
+      - name: Build e pubblica (linux ${{ matrix.arch }})
+        run: npx electron-vite build && npx electron-builder --linux --${{ matrix.arch }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build e pubblica (windows ${{ matrix.arch }})
+        run: npx electron-vite build && npx electron-builder --win --${{ matrix.arch }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

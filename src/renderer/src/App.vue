@@ -26,7 +26,7 @@
   </template>
 
   <ConfirmDialog />
-  <Toast position="bottom-right" />
+  <Toast position="top-right" />
 </template>
 
 <script setup>
@@ -114,5 +114,72 @@ onBeforeUnmount(() => {
 
 .p-splitter-gutter {
   background: var(--p-content-border-color) !important;
+}
+
+/* Toast: card scura in linea con l'app (stessa identità delle altre card
+   flottanti) invece del verde/rosso/blu piatto di default di PrimeVue.
+   La severità resta leggibile da un piccolo accento a sinistra e dal colore
+   dell'icona, non da uno sfondo colorato a piena tinta. */
+.p-toast {
+  width: 22rem;
+}
+.p-toast-message {
+  background: var(--editor-toolbar-bg);
+  border: 1px solid var(--p-content-border-color);
+  border-left: 3px solid var(--icon-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  color: var(--p-text-color);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.p-toast-message-content {
+  padding: 10px 12px;
+  align-items: flex-start;
+}
+.p-toast-message-success {
+  border-left-color: #3ba55d;
+}
+.p-toast-message-success .p-toast-message-icon {
+  color: #3ba55d;
+}
+.p-toast-message-info {
+  border-left-color: #3b82f6;
+}
+.p-toast-message-info .p-toast-message-icon {
+  color: #3b82f6;
+}
+.p-toast-message-warn {
+  border-left-color: #f59e0b;
+}
+.p-toast-message-warn .p-toast-message-icon {
+  color: #f59e0b;
+}
+.p-toast-message-error {
+  border-left-color: #e5484d;
+}
+.p-toast-message-error .p-toast-message-icon {
+  color: #e5484d;
+}
+.p-toast-message-text {
+  margin-left: 10px;
+}
+.p-toast-summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--p-text-color);
+}
+.p-toast-detail {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--p-text-muted-color);
+}
+.p-toast-close-button {
+  color: var(--icon-color);
+  background: transparent;
+}
+.p-toast-close-button:hover {
+  background: var(--sidebar-hover-bg);
+  color: var(--p-text-color);
 }
 </style>

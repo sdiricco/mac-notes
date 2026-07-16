@@ -2,18 +2,6 @@
   <aside class="sidebar">
     <div class="sidebar-topbar">
       <div class="drag-spacer"></div>
-      <button
-        v-if="updateCheck.available"
-        class="update-btn"
-        :title="`Versione ${updateCheck.latestVersion} disponibile (attuale: ${updateCheck.currentVersion})`"
-        @click="onUpdateClick"
-      >
-        <Icon icon="lucide:arrow-up-circle" />
-        <span>Aggiorna</span>
-      </button>
-      <button class="icon-btn" title="Impostazioni" @click="ui.openSettings()">
-        <Icon icon="lucide:settings" />
-      </button>
       <button class="icon-btn" title="Nascondi sidebar" @click="emit('toggle-sidebar')">
         <Icon icon="lucide:panel-left-close" />
       </button>
@@ -85,6 +73,25 @@
         />
       </div>
     </nav>
+
+    <!-- In fondo, non in alto: allineati in cima si sovrapponevano ai tasti
+         del semaforo macOS (chiudi/minimizza/zoom, in alto a sinistra della
+         finestra) quando la sidebar è ridotta in larghezza. -->
+    <div class="sidebar-footer">
+      <button
+        v-if="updateCheck.available"
+        class="update-btn"
+        :title="`Versione ${updateCheck.latestVersion} disponibile (attuale: ${updateCheck.currentVersion})`"
+        @click="onUpdateClick"
+      >
+        <Icon icon="lucide:arrow-up-circle" />
+        <span>Aggiorna</span>
+      </button>
+      <button class="sidebar-item" title="Impostazioni" @click="ui.openSettings()">
+        <Icon icon="lucide:settings" />
+        <span>Impostazioni</span>
+      </button>
+    </div>
 
     <ContextMenu ref="menu" :model="menuItems">
       <template #item="{ item, props }">
@@ -230,25 +237,38 @@ function removeFolder(folder) {
   -webkit-app-region: no-drag;
 }
 
+.sidebar-footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--p-content-border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .update-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
+  width: 100%;
+  gap: 8px;
   border: none;
   background: var(--selection-bg);
   color: var(--p-text-color);
   cursor: pointer;
-  padding: 4px 9px;
+  padding: 6px 8px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  -webkit-app-region: no-drag;
+  text-align: left;
 }
 .update-btn:hover {
   background: var(--sidebar-hover-bg);
 }
 .update-btn :deep(svg) {
-  font-size: 14px;
+  font-size: 15px;
+  flex-shrink: 0;
+  color: var(--icon-color);
 }
 
 .sidebar-section {

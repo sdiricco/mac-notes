@@ -18,8 +18,8 @@
           <button class="icon-btn" title="Importa Markdown" @click="importNote">
             <Icon icon="lucide:upload" />
           </button>
-          <button class="icon-btn" title="Esporta come Markdown" @click="exportNote">
-            <Icon icon="lucide:download" />
+          <button class="icon-btn" title="Markdown" @click="openMarkdownPreview">
+            <Icon icon="lucide:file-code" />
           </button>
           <button
             class="icon-btn"
@@ -40,9 +40,6 @@
           >
             <Icon icon="lucide:star" :class="{ filled: store.selectedNote.pinned }" />
           </button>
-          <button class="icon-btn" title="Copia come Markdown" @click="copyNote">
-            <Icon icon="lucide:copy" />
-          </button>
           <button class="icon-btn" title="Mostra la cartella delle note nel Finder" @click="api.revealDataFile()">
             <Icon icon="lucide:folder-open" />
           </button>
@@ -50,7 +47,7 @@
             v-if="!store.selectedNote.trashed"
             class="icon-btn"
             title="Sposta nel cestino"
-            @click="store.trashNote(store.selectedNote.id)"
+            @click="confirmTrash"
           >
             <Icon icon="lucide:trash-2" />
           </button>
@@ -68,13 +65,36 @@
         class="editor-body"
         @change="onContentChange"
       />
+
+      <Dialog
+        v-model:visible="markdownPreviewOpen"
+        modal
+        header="Markdown"
+        :style="{ width: '38rem' }"
+        :draggable="false"
+        dismissable-mask
+      >
+        <pre class="markdown-preview">{{ markdownPreviewText }}</pre>
+        <template #footer>
+          <button class="md-action-btn" @click="copyNote">
+            <Icon icon="lucide:copy" />
+            <span>Copia</span>
+          </button>
+          <button class="md-action-btn primary" @click="exportNote">
+            <Icon icon="lucide:download" />
+            <span>Scarica</span>
+          </button>
+        </template>
+      </Dialog>
     </template>
   </section>
 </template>
 
 <script setup>
 import { ref } from 'vue'
+import Dialog from 'primevue/dialog'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 import { Icon } from '@iconify/vue'
 import { useNotesStore } from '../stores/notes'
 import { useSettingsStore } from '../stores/settings'
@@ -85,12 +105,33 @@ import { api } from '../utils/api'
 const store = useNotesStore()
 const settings = useSettingsStore()
 const toast = useToast()
+const confirm = useConfirm()
 
 const quillToolbarEl = ref(null)
 // L'import sostituisce il contenuto della nota già aperta: QuillEditor lo ricarica
 // solo quando cambia il suo :key (osserva solo noteId, non il content prop), quindi
 // serve forzare un remount incrementando questo contatore.
 const reloadCounter = ref(0)
+
+const markdownPreviewOpen = ref(false)
+const markdownPreviewText = ref('')
+
+function openMarkdownPreview() {
+  markdownPreviewText.value = htmlToMarkdown(store.selectedNote.content)
+  markdownPreviewOpen.value = true
+}
+
+function confirmTrash() {
+  confirm.require({
+    message: 'Spostare questa nota nel cestino?',
+    header: 'Sposta nel cestino',
+    icon: 'pi pi-exclamation-triangle',
+    acceptLabel: 'Sposta',
+    rejectLabel: 'Annulla',
+    acceptClass: 'p-button-danger',
+    accept: () => store.trashNote(store.selectedNote.id)
+  })
+}
 
 function onContentChange(html) {
   store.updateNote(store.selectedNote.id, { content: html })
@@ -197,6 +238,50 @@ async function copyNote() {
 .editor-body {
   flex: 1;
   min-height: 0;
+}
+
+.markdown-preview {
+  max-height: 60vh;
+  overflow: auto;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--search-bg);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 8px;
+  font-family: 'SF Mono', ui-monospace, Menlo, Monaco, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--p-text-color);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.md-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--p-content-border-color);
+  background: transparent;
+  color: var(--p-text-color);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 7px;
+}
+.md-action-btn:hover {
+  background: var(--sidebar-hover-bg);
+}
+.md-action-btn.primary {
+  background: var(--p-text-color);
+  color: var(--editor-bg);
+  border-color: transparent;
+  font-weight: 600;
+}
+.md-action-btn.primary:hover {
+  opacity: 0.9;
+}
+.md-action-btn :deep(svg) {
+  font-size: 14px;
 }
 
 /* ---- Toolbar floating e card delle azioni: due pillole arrotondate con la
