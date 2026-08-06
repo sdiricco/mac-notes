@@ -14,24 +14,12 @@
              azione invece che nella posizione di default. -->
         <div ref="quillToolbarEl" class="floating-toolbar"></div>
 
+        <!-- Azioni sempre visibili: cerca, preferiti, cestino. Il resto (poco
+             usato) sta nel menu overflow "⋮" invece di affollare la pillola,
+             così l'header non deve mai andare a capo. -->
         <div class="action-card">
-          <button class="icon-btn" title="Importa Markdown" @click="importNote">
-            <Icon icon="lucide:upload" />
-          </button>
-          <button class="icon-btn" title="Markdown" @click="openMarkdownPreview">
-            <Icon icon="lucide:file-code" />
-          </button>
-          <button
-            class="icon-btn"
-            :class="{ on: settings.spellcheck }"
-            :title="
-              settings.spellcheck
-                ? `Correzione ortografica attiva (${settings.spellLang.toUpperCase()})`
-                : 'Attiva correzione ortografica'
-            "
-            @click="settings.toggleSpellcheck()"
-          >
-            <Icon icon="lucide:spell-check" />
+          <button class="icon-btn" title="Cerca nella nota (⌘F)" @click="quillEditorRef?.toggleFindBar()">
+            <Icon icon="lucide:search" />
           </button>
           <button
             class="icon-btn"
@@ -39,9 +27,6 @@
             @click="store.togglePin(store.selectedNote.id)"
           >
             <Icon icon="lucide:star" :class="{ filled: store.selectedNote.pinned }" />
-          </button>
-          <button class="icon-btn" title="Mostra la cartella delle note nel Finder" @click="api.revealDataFile()">
-            <Icon icon="lucide:folder-open" />
           </button>
           <button
             v-if="!store.selectedNote.trashed"
@@ -54,10 +39,35 @@
           <button v-else class="icon-btn" title="Ripristina" @click="store.restoreNote(store.selectedNote.id)">
             <Icon icon="lucide:rotate-ccw" />
           </button>
+
+          <div ref="actionOverflowEl" class="action-overflow">
+            <button class="icon-btn" title="Altre azioni" @click="actionMenuOpen = !actionMenuOpen">
+              <Icon icon="lucide:more-vertical" />
+            </button>
+            <div v-if="actionMenuOpen" class="action-overflow-menu">
+              <button @click="importNote(); actionMenuOpen = false">
+                <Icon icon="lucide:upload" />
+                <span>Importa Markdown</span>
+              </button>
+              <button @click="openMarkdownPreview(); actionMenuOpen = false">
+                <Icon icon="lucide:file-code" />
+                <span>Markdown...</span>
+              </button>
+              <button @click="settings.toggleSpellcheck()">
+                <Icon icon="lucide:spell-check" />
+                <span>Ortografia: {{ settings.spellcheck ? 'attiva' : 'disattiva' }}</span>
+              </button>
+              <button @click="api.revealDataFile(); actionMenuOpen = false">
+                <Icon icon="lucide:folder-open" />
+                <span>Mostra nel Finder</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       <QuillEditor
+        ref="quillEditorRef"
         :key="`${store.selectedNote.id}-${reloadCounter}`"
         :note-id="store.selectedNote.id"
         :content="store.selectedNote.content"
@@ -91,7 +101,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import Dialog from 'primevue/dialog'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
@@ -108,6 +118,7 @@ const toast = useToast()
 const confirm = useConfirm()
 
 const quillToolbarEl = ref(null)
+const quillEditorRef = ref(null)
 // L'import sostituisce il contenuto della nota già aperta: QuillEditor lo ricarica
 // solo quando cambia il suo :key (osserva solo noteId, non il content prop), quindi
 // serve forzare un remount incrementando questo contatore.
@@ -115,6 +126,21 @@ const reloadCounter = ref(0)
 
 const markdownPreviewOpen = ref(false)
 const markdownPreviewText = ref('')
+
+// Menu overflow "⋮" delle azioni meno usate (importa, markdown, ortografia,
+// Finder): chiuso automaticamente al click fuori, stesso pattern del menu
+// contestuale tabella in QuillEditor.vue.
+const actionMenuOpen = ref(false)
+const actionOverflowEl = ref(null)
+
+function onGlobalMousedown(event) {
+  if (actionMenuOpen.value && actionOverflowEl.value && !actionOverflowEl.value.contains(event.target)) {
+    actionMenuOpen.value = false
+  }
+}
+
+onMounted(() => window.addEventListener('mousedown', onGlobalMousedown))
+onBeforeUnmount(() => window.removeEventListener('mousedown', onGlobalMousedown))
 
 function openMarkdownPreview() {
   markdownPreviewText.value = htmlToMarkdown(store.selectedNote.content)
@@ -189,25 +215,76 @@ async function copyNote() {
   font-size: 30px;
 }
 
+/* Barra unica a tutta larghezza (non più due pillole separate): la toolbar
+   di formattazione (uso frequente) sta a sinistra, le azioni sulla nota (uso
+   saltuario) a destra, con un bordo inferiore che separa dal contenuto,
+   come una vera toolbar d'app invece di due card fluttuanti. Ogni gruppo
+   nasconde i controlli meno usati in un proprio menu overflow (vedi
+   .toolbar-overflow-panel e .action-overflow-menu) invece di andare a capo,
+   così l'altezza dell'header resta costante a qualunque larghezza. */
 .editor-header {
   position: sticky;
   top: 0;
   z-index: 2;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  padding: 2px 16px 6px;
+  gap: 6px;
+  padding: 10px 16px 12px;
   -webkit-app-region: drag;
-  background: var(--editor-bg);
+  background: transparent;
+  border-bottom: 1px solid var(--p-content-border-color);
 }
 
 .action-card {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
+}
+
+.action-overflow {
+  position: relative;
+  display: flex;
+}
+
+.action-overflow-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 210px;
+  background: var(--editor-toolbar-bg);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.action-overflow-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--p-text-color);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  text-align: left;
+}
+.action-overflow-menu button:hover {
+  background: var(--sidebar-hover-bg);
+}
+.action-overflow-menu :deep(svg) {
+  font-size: 15px;
+  color: var(--icon-color);
+  flex-shrink: 0;
 }
 
 .icon-btn {
@@ -284,32 +361,39 @@ async function copyNote() {
   font-size: 14px;
 }
 
-/* ---- Toolbar floating e card delle azioni: due pillole arrotondate con la
-   stessa identità visiva, larghe solo quanto il loro contenuto (fit-content),
-   centrate nell'header. Il contenuto della toolbar (bottoni/select) è iniettato
-   da Quill in modo imperativo: serve :deep() perché non fa parte del template
+/* ---- Toolbar di formattazione e azioni sulla nota: due gruppi allo stesso
+   livello della barra unica (niente più sfondo/bordo/ombra propri, li eredita
+   dalla barra), larghi solo quanto il loro contenuto e allineati agli estremi
+   dell'header. Il contenuto della toolbar (bottoni/select) è iniettato da
+   Quill in modo imperativo: serve :deep() perché non fa parte del template
    compilato di questo componente. ---- */
 .floating-toolbar,
 .action-card {
   width: fit-content;
   max-width: 100%;
-  border: 1px solid var(--p-content-border-color);
-  border-radius: 10px;
-  padding: 3px 8px;
-  background: var(--editor-toolbar-bg);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   -webkit-app-region: no-drag;
+}
+
+/* Quill aggiunge le classi ql-toolbar/ql-snow al contenitore esterno passato
+   come modules.toolbar.container: quill.snow.css le usa per un bordo/padding
+   di default (border 1px + padding 8px) più specifico del nostro selettore a
+   singola classe, che quindi va forzato per non far ricomparire quel box. */
+.floating-toolbar {
+  border: none !important;
+  padding: 0 !important;
+  background: transparent !important;
 }
 
 .floating-toolbar :deep(.ql-formats) {
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  margin-right: 6px;
-  padding-right: 6px;
+  margin-right: 4px;
+  padding-right: 4px;
   border-right: 1px solid var(--p-content-border-color);
 }
 .floating-toolbar :deep(.ql-formats:last-child) {
@@ -368,27 +452,35 @@ async function copyNote() {
   color: var(--p-text-color);
 }
 
-/* Etichette compatte: "H1/H2/H3/¶" invece di "Heading 1/2/3/Normal", e select
-   più stretta di conseguenza. Idem per il gruppo liste, che ora è un unico
-   menu a discesa invece di tre bottoni separati. */
+/* Etichetta del selettore di stile del blocco: mostra sempre lo stato
+   attuale ("Normal" di default, "Heading 1/2/3" quando applicato), non un
+   testo segnaposto fisso — si comporta come una vera select. È un chip con
+   sfondo proprio, distinto dai bottoni di formattazione inline: è il primo
+   controllo, quello che decide il "tipo" di paragrafo, non un toggle come
+   bold/italic. Idem per il gruppo liste, che ora è un unico menu a discesa
+   invece di tre bottoni separati. */
 .floating-toolbar :deep(.ql-picker.ql-header) {
-  width: 40px;
+  width: auto;
+  min-width: 92px;
+}
+.floating-toolbar :deep(.ql-picker.ql-header .ql-picker-label) {
+  background: var(--search-bg);
 }
 .floating-toolbar :deep(.ql-picker.ql-header .ql-picker-label)::before,
 .floating-toolbar :deep(.ql-picker.ql-header .ql-picker-item)::before {
-  content: '¶';
+  content: 'Normal';
 }
 .floating-toolbar :deep(.ql-picker.ql-header .ql-picker-label[data-value='1'])::before,
 .floating-toolbar :deep(.ql-picker.ql-header .ql-picker-item[data-value='1'])::before {
-  content: 'H1';
+  content: 'Heading 1';
 }
 .floating-toolbar :deep(.ql-picker.ql-header .ql-picker-label[data-value='2'])::before,
 .floating-toolbar :deep(.ql-picker.ql-header .ql-picker-item[data-value='2'])::before {
-  content: 'H2';
+  content: 'Heading 2';
 }
 .floating-toolbar :deep(.ql-picker.ql-header .ql-picker-label[data-value='3'])::before,
 .floating-toolbar :deep(.ql-picker.ql-header .ql-picker-item[data-value='3'])::before {
-  content: 'H3';
+  content: 'Heading 3';
 }
 
 .floating-toolbar :deep(.ql-picker.ql-list) {
@@ -472,5 +564,35 @@ async function copyNote() {
 }
 .floating-toolbar :deep(button.ql-active .ql-fill) {
   fill: var(--p-text-color) !important;
+}
+
+/* Gruppo overflow "⋯" (colori, code-block, immagine, tabella, pulisci
+   formattazione): il bottone toggle eredita già dimensioni/hover/colore
+   icona dalla regola generica ".floating-toolbar :deep(button)" sopra,
+   quindi qui serve solo il posizionamento del pannello a comparsa. */
+.floating-toolbar :deep(.toolbar-overflow) {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.floating-toolbar :deep(.toolbar-overflow.is-open .toolbar-overflow-toggle) {
+  background: var(--selection-bg);
+}
+.floating-toolbar :deep(.toolbar-overflow-panel) {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  align-items: center;
+  flex-wrap: nowrap;
+  background: var(--editor-toolbar-bg);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 3px 8px;
+}
+.floating-toolbar :deep(.toolbar-overflow.is-open .toolbar-overflow-panel) {
+  display: flex;
 }
 </style>

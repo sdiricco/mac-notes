@@ -233,6 +233,16 @@ const toolbarOptions = [
 // contenitore esterno: Quill non genera l'HTML in quel caso (lo fa solo per
 // un array passato come modules.toolbar), ma la sua theme "snow" continua a
 // riconoscere queste classi e ad aggiungere le icone automaticamente.
+//
+// I controlli sono divisi in "sempre visibili" (i più usati: titolo, stili
+// inline, liste/citazione/codice/link) e un gruppo overflow "⋯" per quelli
+// usati meno spesso (colori, code-block, immagine, tabella, pulisci
+// formattazione). Così l'header ha un'altezza fissa a qualunque larghezza
+// della finestra invece di andare a capo (vedi editor-header in
+// NoteEditor.vue). Il toggle "⋯" non ha classi ql-*, quindi il modulo
+// Toolbar di Quill lo ignora (Toolbar.attach cerca una classe che inizi per
+// "ql-", altrimenti non aggancia nessun handler): la visibilità del pannello
+// è gestita a mano in onMounted (vedi toggleToolbarOverflow).
 const TOOLBAR_HTML = `
   <span class="ql-formats">
     <select class="ql-header">
@@ -247,11 +257,6 @@ const TOOLBAR_HTML = `
     <button class="ql-italic" type="button"></button>
     <button class="ql-underline" type="button"></button>
     <button class="ql-strike" type="button"></button>
-    <button class="ql-code" type="button"></button>
-  </span>
-  <span class="ql-formats">
-    <select class="ql-color"></select>
-    <select class="ql-background"></select>
   </span>
   <span class="ql-formats">
     <select class="ql-list">
@@ -260,18 +265,32 @@ const TOOLBAR_HTML = `
       <option value="unchecked"></option>
       <option selected></option>
     </select>
-  </span>
-  <span class="ql-formats">
     <button class="ql-blockquote" type="button"></button>
-    <button class="ql-code-block" type="button"></button>
+    <button class="ql-code" type="button"></button>
     <button class="ql-link" type="button"></button>
-    <button class="ql-image" type="button"></button>
   </span>
-  <span class="ql-formats">
-    <button class="ql-table" type="button"></button>
-  </span>
-  <span class="ql-formats">
-    <button class="ql-clean" type="button"></button>
+  <span class="toolbar-overflow">
+    <button type="button" class="toolbar-overflow-toggle" title="Altre opzioni di formattazione">
+      <svg viewbox="0 0 18 18">
+        <circle class="ql-fill" cx="3" cy="9" r="1.4"></circle>
+        <circle class="ql-fill" cx="9" cy="9" r="1.4"></circle>
+        <circle class="ql-fill" cx="15" cy="9" r="1.4"></circle>
+      </svg>
+    </button>
+    <div class="toolbar-overflow-panel">
+      <span class="ql-formats">
+        <select class="ql-color"></select>
+        <select class="ql-background"></select>
+      </span>
+      <span class="ql-formats">
+        <button class="ql-code-block" type="button"></button>
+        <button class="ql-image" type="button"></button>
+        <button class="ql-table" type="button"></button>
+      </span>
+      <span class="ql-formats">
+        <button class="ql-clean" type="button"></button>
+      </span>
+    </div>
   </span>
 `
 
@@ -703,6 +722,12 @@ function openFindBar() {
   nextTick(() => findInputEl.value?.focus())
 }
 
+// Richiamato dal bottone "Cerca" nell'action-card di NoteEditor.vue (oltre a ⌘F).
+function toggleFindBar() {
+  if (findBar.visible) closeFindBar()
+  else openFindBar()
+}
+
 function closeFindBar() {
   // Alla chiusura (non durante la digitazione) si sposta anche il cursore
   // reale sull'ultimo risultato attivo, così si riprende a scrivere lì.
@@ -780,9 +805,35 @@ function runTableAction(value) {
   closeTableMenu()
 }
 
+// Gruppo overflow "⋯" della toolbar di formattazione (vedi TOOLBAR_HTML):
+// apertura/chiusura gestite a mano perché quel markup vive fuori dal
+// template Vue (iniettato imperativamente da Quill nel contenitore esterno).
+let toolbarOverflowEl = null
+
+function toggleToolbarOverflow(event) {
+  event.stopPropagation()
+  toolbarOverflowEl?.classList.toggle('is-open')
+}
+
+function closeToolbarOverflow() {
+  toolbarOverflowEl?.classList.remove('is-open')
+}
+
+// Chiude il pannello subito dopo un'azione diretta (bottone o voce colore
+// scelta), non dopo l'apertura di un picker (che richiede un secondo click).
+function onToolbarOverflowClick(event) {
+  const actedImmediately = event.target.closest(
+    'button.ql-code-block, button.ql-image, button.ql-table, button.ql-clean, .ql-picker-item'
+  )
+  if (actedImmediately) requestAnimationFrame(closeToolbarOverflow)
+}
+
 function onGlobalMousedown(event) {
   if (tableMenu.visible && !tableMenuEl.value?.contains(event.target)) {
     closeTableMenu()
+  }
+  if (toolbarOverflowEl?.classList.contains('is-open') && !toolbarOverflowEl.contains(event.target)) {
+    closeToolbarOverflow()
   }
 }
 
@@ -818,6 +869,11 @@ onMounted(async () => {
   // (icons['code'] === icons['code-block']): la sostituiamo per distinguerle.
   const inlineCodeButton = quill.getModule('toolbar').container.querySelector('button.ql-code')
   if (inlineCodeButton) inlineCodeButton.innerHTML = INLINE_CODE_ICON
+
+  toolbarOverflowEl = props.toolbarContainer?.querySelector('.toolbar-overflow') || null
+  const toolbarOverflowToggle = props.toolbarContainer?.querySelector('.toolbar-overflow-toggle')
+  toolbarOverflowToggle?.addEventListener('click', toggleToolbarOverflow)
+  toolbarOverflowEl?.addEventListener('click', onToolbarOverflowClick)
 
   loadContent(props.content)
   applySpellcheck()
@@ -860,7 +916,7 @@ function focusEditor() {
   quill?.focus()
 }
 
-defineExpose({ focusEditor })
+defineExpose({ focusEditor, toggleFindBar })
 
 onBeforeUnmount(() => {
   window.removeEventListener('mousedown', onGlobalMousedown)
@@ -1192,7 +1248,7 @@ onBeforeUnmount(() => {
 }
 
 .quill-editor :deep(.ql-editor) {
-  padding: 12px 24px 40px;
+  padding: 22px 24px 40px;
   line-height: 1.6;
 }
 
