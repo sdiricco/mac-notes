@@ -148,13 +148,15 @@ function openMarkdownPreview() {
 }
 
 function confirmTrash() {
+  const title = store.selectedNote.title?.trim() || 'Nuova nota'
   confirm.require({
-    message: 'Spostare questa nota nel cestino?',
+    message: `Vuoi spostare la nota "${title}" nel cestino?`,
     header: 'Sposta nel cestino',
     icon: 'pi pi-exclamation-triangle',
     acceptLabel: 'Sposta',
     rejectLabel: 'Annulla',
     acceptClass: 'p-button-danger',
+    rejectClass: 'p-button-secondary',
     accept: () => store.trashNote(store.selectedNote.id)
   })
 }
@@ -230,7 +232,7 @@ async function copyNote() {
   justify-content: space-between;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px 12px;
+  padding: 10px 16px;
   -webkit-app-region: drag;
   background: transparent;
   border-bottom: 1px solid var(--p-content-border-color);
@@ -277,6 +279,7 @@ async function copyNote() {
   padding: 7px 10px;
   border-radius: 6px;
   text-align: left;
+  outline: none;
 }
 .action-overflow-menu button:hover {
   background: var(--sidebar-hover-bg);
@@ -297,6 +300,7 @@ async function copyNote() {
   font-size: 15px;
   display: flex;
   align-items: center;
+  outline: none;
   -webkit-app-region: no-drag;
 }
 .icon-btn:hover {
@@ -307,9 +311,14 @@ async function copyNote() {
   background: var(--selection-bg);
   color: var(--p-text-color);
 }
+/* lucide:star ha fill="none" sul <path> stesso (non sull'<svg> genitore):
+   l'eredità CSS non può vincere sopra un attributo diretto del figlio,
+   quindi va sovrascritto puntando esplicitamente il path. */
 .icon-btn :deep(svg.filled) {
-  fill: var(--p-text-color);
   color: var(--p-text-color);
+}
+.icon-btn :deep(svg.filled path) {
+  fill: var(--p-text-color);
 }
 
 .editor-body {
@@ -413,6 +422,7 @@ async function copyNote() {
   border: none;
   background: transparent;
   cursor: pointer;
+  outline: none;
 }
 .floating-toolbar :deep(button:hover),
 .floating-toolbar :deep(button.ql-active) {

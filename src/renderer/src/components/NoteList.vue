@@ -2,6 +2,10 @@
   <section class="note-list">
     <div class="note-list-drag"></div>
 
+    <!-- L'header resta sempre quello normale: la selezione multipla non lo
+         sostituisce più, vive allo stesso livello della barra di
+         ordinamento (vedi sort-row), così la vista non "salta" cambiando
+         del tutto struttura quando si entra/esce dalla modalità. -->
     <div class="note-list-header" :class="{ inset: !sidebarVisible }">
       <h2>{{ folderTitle }}</h2>
       <div class="header-actions">
@@ -38,14 +42,49 @@
       <input ref="searchInput" v-model="store.searchQuery" type="text" placeholder="Cerca" />
     </div>
 
-    <button class="sort-bar" title="Ordina e filtra" @click="sortMenu.toggle($event)">
-      <Icon :icon="settings.sortDir === 'asc' ? 'lucide:arrow-up-narrow-wide' : 'lucide:arrow-down-wide-narrow'" />
-      <span class="sort-current">{{ sortLabel }}</span>
-      <span v-if="settings.pinnedOnly" class="sort-filter">
-        <Icon icon="lucide:star" /> preferiti
-      </span>
-      <Icon icon="lucide:chevron-down" class="sort-chevron" />
-    </button>
+    <!-- Due punti d'ingresso per la selezione multipla: questo bottone
+         dedicato e la voce "Seleziona note" nel menu "⋮" di una nota (vedi
+         noteMenuItems), che parte già con quella nota pre-selezionata. -->
+    <div class="sort-row">
+      <template v-if="!selectionMode">
+        <button
+          v-if="store.visibleNotes.length"
+          class="icon-btn"
+          title="Seleziona note"
+          @click="enterSelectionMode"
+        >
+          <Icon icon="lucide:list-checks" />
+        </button>
+        <button class="sort-bar select-mode-btn" title="Ordina e filtra" @click="sortMenu.toggle($event)">
+          <Icon :icon="settings.sortDir === 'asc' ? 'lucide:arrow-up-narrow-wide' : 'lucide:arrow-down-wide-narrow'" />
+          <span class="sort-current">{{ sortLabel }}</span>
+          <span v-if="settings.pinnedOnly" class="sort-filter">
+            <Icon icon="lucide:star" /> preferiti
+          </span>
+          <Icon icon="lucide:chevron-down" class="sort-chevron" />
+        </button>
+      </template>
+      <template v-else>
+        <Checkbox
+          binary
+          :model-value="allVisibleSelected"
+          :indeterminate="someVisibleSelected && !allVisibleSelected"
+          @update:model-value="toggleSelectAll"
+        />
+        <span class="selection-count">{{ selectedIds.size }}/{{ store.visibleNotes.length }}</span>
+        <button
+          class="icon-btn danger"
+          :title="store.isTrashView ? 'Elimina definitivamente' : 'Sposta nel cestino'"
+          :disabled="selectedIds.size === 0"
+          @click="confirmBulkDelete"
+        >
+          <Icon icon="lucide:trash-2" />
+        </button>
+        <button class="icon-btn select-mode-btn" title="Annulla selezione" @click="exitSelectionMode">
+          <Icon icon="lucide:x" />
+        </button>
+      </template>
+    </div>
 
     <div class="note-items">
       <div v-if="store.visibleNotes.length === 0" class="empty-state">
@@ -57,11 +96,21 @@
         v-for="note in store.visibleNotes"
         :key="note.id"
         class="note-item"
-        :class="{ active: note.id === store.selectedNoteId }"
-        @click="store.selectNote(note.id)"
+        :class="{ active: note.id === store.selectedNoteId, selected: selectedIds.has(note.id) }"
+        @click="onItemClick(note)"
         @contextmenu.prevent="openMenu($event, note)"
       >
         <div class="note-item-top">
+          <!-- @click.stop evita che il click sulla checkbox raddoppi il
+               toggle facendo scattare anche onItemClick sulla riga. -->
+          <Checkbox
+            v-if="selectionMode"
+            binary
+            :model-value="selectedIds.has(note.id)"
+            class="note-select-check"
+            @click.stop
+            @update:model-value="toggleNoteSelected(note.id)"
+          />
           <Icon v-if="note.pinned" icon="lucide:star" class="pin-icon" />
           <input
             v-if="renamingId === note.id"
@@ -74,7 +123,7 @@
             @blur="commitRename(note)"
           />
           <span v-else class="note-title">{{ note.title || 'Nuova nota' }}</span>
-          <button class="kebab" title="Azioni" @click.stop="openMenu($event, note)">
+          <button v-if="!selectionMode" class="kebab" title="Azioni" @click.stop="openMenu($event, note)">
             <Icon icon="lucide:ellipsis" />
           </button>
         </div>
@@ -120,8 +169,9 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import Menu from 'primevue/menu'
+import Checkbox from 'primevue/checkbox'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { Icon } from '@iconify/vue'
@@ -167,6 +217,7 @@ const noteMenuItems = computed(() => {
   if (note.trashed) {
     return [
       { label: 'Ripristina', icon: 'lucide:rotate-ccw', command: () => store.restoreNote(note.id) },
+      { label: 'Seleziona note', icon: 'lucide:list-checks', command: () => startSelectionFrom(note) },
       {
         label: 'Elimina definitivamente',
         icon: 'lucide:trash-2',
@@ -186,6 +237,7 @@ const noteMenuItems = computed(() => {
       icon: 'lucide:star',
       command: () => store.togglePin(note.id)
     },
+    { label: 'Seleziona note', icon: 'lucide:list-checks', command: () => startSelectionFrom(note) },
     {
       label: 'Sposta nel cestino',
       icon: 'lucide:trash-2',
@@ -239,9 +291,101 @@ function confirmEmptyTrash() {
     acceptLabel: 'Svuota',
     rejectLabel: 'Annulla',
     acceptClass: 'p-button-danger',
+    rejectClass: 'p-button-secondary',
     accept: () => store.emptyTrash()
   })
 }
+
+// Selezione multipla: sostituisce l'header e il comportamento di click sulle
+// note (che diventa "seleziona" invece di "apri") per eliminarne più insieme
+// senza dover ripetere Cmd+click nota-per-nota o passare dal menu singolo.
+const selectionMode = ref(false)
+const selectedIds = reactive(new Set())
+
+function enterSelectionMode() {
+  selectionMode.value = true
+  selectedIds.clear()
+}
+
+// Punto d'ingresso della selezione multipla: dal menu "⋮" di una nota
+// specifica (vedi noteMenuItems), che entra in modalità con quella nota già
+// pre-selezionata invece di partire da una selezione vuota.
+function startSelectionFrom(note) {
+  enterSelectionMode()
+  selectedIds.add(note.id)
+}
+
+function exitSelectionMode() {
+  selectionMode.value = false
+  selectedIds.clear()
+}
+
+function toggleNoteSelected(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id)
+  else selectedIds.add(id)
+}
+
+function onItemClick(note) {
+  if (selectionMode.value) toggleNoteSelected(note.id)
+  else store.selectNote(note.id)
+}
+
+function selectAllVisible() {
+  store.visibleNotes.forEach((note) => selectedIds.add(note.id))
+}
+
+// Checkbox "seleziona tutte" a 3 stati (vuota/indeterminata/piena): click
+// seleziona tutte se non lo sono già, altrimenti deseleziona tutte.
+const allVisibleSelected = computed(
+  () => store.visibleNotes.length > 0 && store.visibleNotes.every((note) => selectedIds.has(note.id))
+)
+const someVisibleSelected = computed(() => store.visibleNotes.some((note) => selectedIds.has(note.id)))
+
+function toggleSelectAll() {
+  if (allVisibleSelected.value) selectedIds.clear()
+  else selectAllVisible()
+}
+
+function confirmBulkDelete() {
+  const ids = Array.from(selectedIds)
+  if (!ids.length) return
+  const count = ids.length
+  const noun = count === 1 ? 'nota' : 'note'
+  if (store.isTrashView) {
+    confirm.require({
+      message: `Eliminare definitivamente ${count} ${noun}? L'operazione non può essere annullata.`,
+      header: 'Elimina definitivamente',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Elimina',
+      rejectLabel: 'Annulla',
+      acceptClass: 'p-button-danger',
+      rejectClass: 'p-button-secondary',
+      accept: () => {
+        store.deleteNotesPermanently(ids)
+        exitSelectionMode()
+      }
+    })
+  } else {
+    confirm.require({
+      message: `Spostare ${count} ${noun} nel cestino?`,
+      header: 'Sposta nel cestino',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Sposta',
+      rejectLabel: 'Annulla',
+      acceptClass: 'p-button-danger',
+      rejectClass: 'p-button-secondary',
+      accept: () => {
+        store.trashNotes(ids)
+        exitSelectionMode()
+      }
+    })
+  }
+}
+
+// Cambiare cartella/vista con una selezione attiva lascerebbe selezionati id
+// di note non più visibili: si esce dalla modalità invece di trascinare uno
+// stato ambiguo tra viste diverse.
+watch(() => store.selectedFolderId, exitSelectionMode)
 
 function preview(content) {
   const text = stripHtml(content)
@@ -300,6 +444,12 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   -webkit-app-region: no-drag;
 }
 
+.selection-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--p-text-color);
+}
+
 .icon-btn {
   border: none;
   background: transparent;
@@ -310,6 +460,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   font-size: 16px;
   display: flex;
   align-items: center;
+  outline: none;
 }
 .icon-btn:hover {
   background: var(--sidebar-hover-bg);
@@ -346,11 +497,16 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   color: var(--p-text-color);
 }
 
+.sort-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 10px 6px;
+}
 .sort-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0 10px 6px;
   padding: 4px 8px;
   border: none;
   border-radius: 7px;
@@ -358,7 +514,14 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   color: var(--p-text-muted-color);
   font-size: 12px;
   cursor: pointer;
-  width: calc(100% - 20px);
+  width: fit-content;
+  max-width: 100%;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.select-mode-btn {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 .sort-bar:hover {
   background: var(--sidebar-hover-bg);
@@ -417,11 +580,36 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   background: var(--card-bg);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
 }
+.note-item.selected {
+  background: var(--selection-bg);
+}
 
 .note-item-top {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Il tema Aura di default usa il verde (primary di PrimeVue) per lo stato
+   selezionato: qui vogliamo il neutro scuro/chiaro già usato altrove per le
+   azioni "primary" dell'app (es. .value-prompt-ok), non il verde. */
+.note-select-check,
+.sort-row :deep(.p-checkbox) {
+  --p-checkbox-checked-background: var(--p-text-color);
+  --p-checkbox-checked-hover-background: var(--p-text-color);
+  --p-checkbox-checked-border-color: var(--p-text-color);
+  --p-checkbox-checked-hover-border-color: var(--p-text-color);
+  --p-checkbox-checked-focus-border-color: var(--p-text-color);
+  --p-checkbox-icon-checked-color: var(--editor-bg);
+  --p-checkbox-icon-checked-hover-color: var(--editor-bg);
+  flex-shrink: 0;
+}
+/* .sort-row ha margin-left 10px, ma il checkbox di ogni nota è rientrato di
+   16px (padding di .note-items + .note-item): senza questo margine il
+   checkbox "seleziona tutte" risulta 6px più a sinistra della colonna dei
+   checkbox delle note sotto, invece di stare allineato sopra di essa. */
+.sort-row :deep(.p-checkbox) {
+  margin-left: 6px;
 }
 
 .pin-icon {
@@ -450,6 +638,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   align-items: center;
   font-size: 15px;
   opacity: 0;
+  outline: none;
 }
 .note-item:hover .kebab,
 .note-item.active .kebab {
@@ -535,4 +724,5 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   letter-spacing: 0.03em;
   color: var(--p-text-muted-color);
 }
+
 </style>

@@ -203,6 +203,25 @@ export const useNotesStore = defineStore('notes', {
       saveNoteNow(note)
     },
 
+    // Selezione multipla in NoteList.vue: sposta più note nel cestino in un
+    // solo colpo invece di richiamare trashNote in loop (un solo ricalcolo
+    // di selectedNoteId al termine, non uno per nota).
+    trashNotes(ids) {
+      const idSet = new Set(ids)
+      let touchedSelected = false
+      this.notes.forEach((note) => {
+        if (!idSet.has(note.id) || note.trashed) return
+        note.trashed = true
+        note.updatedAt = Date.now()
+        saveNoteNow(note)
+        if (note.id === this.selectedNoteId) touchedSelected = true
+      })
+      if (touchedSelected) {
+        const next = this.visibleNotes[0]
+        this.selectedNoteId = next ? next.id : null
+      }
+    },
+
     restoreNote(id) {
       const note = this.notes.find((n) => n.id === id)
       if (!note) return
@@ -218,6 +237,19 @@ export const useNotesStore = defineStore('notes', {
         this.selectedNoteId = next ? next.id : null
       }
       deleteNoteFile(id)
+    },
+
+    // Controparte di trashNotes per il cestino: elimina definitivamente più
+    // note selezionate in un solo colpo.
+    deleteNotesPermanently(ids) {
+      const idSet = new Set(ids)
+      const touchedSelected = this.selectedNoteId && idSet.has(this.selectedNoteId)
+      this.notes = this.notes.filter((n) => !idSet.has(n.id))
+      if (touchedSelected) {
+        const next = this.visibleNotes[0]
+        this.selectedNoteId = next ? next.id : null
+      }
+      ids.forEach(deleteNoteFile)
     },
 
     emptyTrash() {

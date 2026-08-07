@@ -207,6 +207,7 @@ function removeFolder(folder) {
     acceptLabel: 'Elimina',
     rejectLabel: 'Annulla',
     acceptClass: 'p-button-danger',
+    rejectClass: 'p-button-secondary',
     accept: () => store.deleteFolder(folder.id)
   })
 }
