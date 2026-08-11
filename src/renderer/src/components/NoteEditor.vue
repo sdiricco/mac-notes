@@ -198,8 +198,10 @@ async function copyNote() {
   background: var(--editor-bg);
 }
 
+/* Nessuna altezza fissa: era una striscia draggabile duplicata, la stessa
+   funzione la assolve già editor-header (anch'esso -webkit-app-region:drag).
+   Lo spazio che dava è confluito nel padding-top dell'header, vedi sotto. */
 .editor-drag {
-  height: 16px;
   -webkit-app-region: drag;
   flex-shrink: 0;
 }
@@ -232,7 +234,7 @@ async function copyNote() {
   justify-content: space-between;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px;
+  padding: 12px 16px;
   -webkit-app-region: drag;
   background: transparent;
   border-bottom: 1px solid var(--p-content-border-color);

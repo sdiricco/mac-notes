@@ -130,11 +130,13 @@ export const useNotesStore = defineStore('notes', {
     },
 
     createNote(folderId) {
+      // Da "Tutte le note" (o dal cestino, anche se lì il tasto "Nuova nota"
+      // non è mai visibile) la nota resta senza cartella (folderId: null)
+      // invece di finire assegnata in silenzio alla prima cartella della
+      // lista: altrimenti sembra "sparire" dentro una cartella scelta a caso
+      // e ricompare come duplicato quando poi la apri.
       const targetFolder =
-        folderId ||
-        (this.selectedFolderId !== ALL && this.selectedFolderId !== TRASH
-          ? this.selectedFolderId
-          : this.folders[0]?.id)
+        folderId || (this.selectedFolderId !== ALL && this.selectedFolderId !== TRASH ? this.selectedFolderId : null)
       const now = Date.now()
       const note = {
         id: uuid(),

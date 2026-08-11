@@ -414,8 +414,10 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   border-right: 1px solid var(--p-content-border-color);
 }
 
+/* Nessuna altezza fissa: era una striscia draggabile duplicata, la stessa
+   funzione la assolve già note-list-header (anch'esso -webkit-app-region:drag).
+   Lo spazio che dava è confluito nel padding-top dell'header, vedi sotto. */
 .note-list-drag {
-  height: 16px;
   -webkit-app-region: drag;
   flex-shrink: 0;
 }
@@ -424,7 +426,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() })
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px 8px;
+  padding: 10px 12px 8px;
   -webkit-app-region: drag;
 }
 /* quando la sidebar è chiusa i semafori della finestra coprono l'angolo: rientro */

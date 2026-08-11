@@ -364,26 +364,6 @@ async function resolveImageSrc(raw) {
   return { src: result.dataUri }
 }
 
-watch(
-  () => valuePrompt.url,
-  async (raw) => {
-    const trimmed = raw.trim()
-    editing.error = ''
-    if (!trimmed) {
-      imagePreviewSrc.value = ''
-      imagePreviewFailed.value = false
-      return
-    }
-    const { src, error } = await resolveImageSrc(trimmed)
-    // se nel frattempo il campo è cambiato ancora, questa risposta è superata
-    if (valuePrompt.url.trim() !== trimmed) return
-    imagePreviewSrc.value = src || ''
-    imagePreviewFailed.value = !src
-    if (error) editing.error = error
-  },
-  { immediate: true }
-)
-
 // Apre il selettore file nativo (o l'equivalente <input type="file"> nel
 // fallback browser): il file scelto arriva già come data URI (vedi
 // pickImage), quindi qui non serve altra conversione.
@@ -472,6 +452,31 @@ const cropAreaEl = ref(null)
 const isDraggingOver = ref(false)
 const editing = reactive({ busy: false, error: '', cropping: false, cropRect: null })
 let cropDragStart = null
+
+// Deve stare dopo la dichiarazione di "editing" qui sopra: con immediate:true
+// Vue esegue subito la callback durante il setup, e riferirsi a "editing" da
+// un punto del file precedente alla sua "const" lancia un ReferenceError da
+// temporal dead zone (qui capitava dentro una funzione async, quindi finiva
+// silenziosamente in una promise rifiutata invece di bloccare il mount).
+watch(
+  () => valuePrompt.url,
+  async (raw) => {
+    const trimmed = raw.trim()
+    editing.error = ''
+    if (!trimmed) {
+      imagePreviewSrc.value = ''
+      imagePreviewFailed.value = false
+      return
+    }
+    const { src, error } = await resolveImageSrc(trimmed)
+    // se nel frattempo il campo è cambiato ancora, questa risposta è superata
+    if (valuePrompt.url.trim() !== trimmed) return
+    imagePreviewSrc.value = src || ''
+    imagePreviewFailed.value = !src
+    if (error) editing.error = error
+  },
+  { immediate: true }
+)
 
 const cropBoxStyle = computed(() => {
   const r = editing.cropRect
