@@ -149,7 +149,17 @@ export const useNotesStore = defineStore('notes', {
         updatedAt: now
       }
       this.notes.unshift(note)
-      this.selectedFolderId = targetFolder
+      // targetFolder null = nota senza cartella: la vista deve restare su
+      // "Tutte le note" (ALL), non diventare null — con selectedFolderId null
+      // visibleNotes cade sul confronto n.folderId === null e mostrerebbe solo
+      // le note senza cartella, con nessuna voce attiva nella sidebar.
+      this.selectedFolderId = targetFolder || ALL
+      // una ricerca attiva filtrerebbe via la nota appena creata (titolo e
+      // contenuto vuoti non possono corrispondere), facendola sembrare persa;
+      // stesso discorso per il filtro "solo preferiti", dato che nasce non
+      // preferita
+      this.searchQuery = ''
+      useSettingsStore().setPinnedOnly(false)
       this.selectedNoteId = note.id
       saveNoteNow(note)
       return note

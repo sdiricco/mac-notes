@@ -66,6 +66,11 @@ export const useSettingsStore = defineStore('settings', {
       this.save()
     },
 
+    setPinnedOnly(value) {
+      this.pinnedOnly = value
+      this.save()
+    },
+
     toggleSpellcheck() {
       this.spellcheck = !this.spellcheck
       this.save()
